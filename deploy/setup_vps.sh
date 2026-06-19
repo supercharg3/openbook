@@ -57,6 +57,8 @@ SERVICES=(
   trading-dashboard.service
   trading-stock-factor.service trading-stock-factor.timer
   trading-swing.service trading-swing.timer
+  trading-degen.service trading-degen.timer
+  trading-alpha.service
   trading-rescreen.service trading-rescreen.timer
 )
 for svc in "${SERVICES[@]}"; do
@@ -77,6 +79,18 @@ if grep -q "^ALPACA_API_KEY_ID=." .env 2>/dev/null; then
   sudo systemctl enable --now trading-stock-factor.timer
   sudo systemctl enable --now trading-swing.timer
   echo "    Alpaca detected — stock + swing sleeves enabled."
+fi
+
+# Degen (enable if Binance keys are set)
+if grep -q "^BINANCE_API_KEY=." .env 2>/dev/null; then
+  sudo systemctl enable --now trading-degen.timer
+  echo "    Binance detected — degen sleeve enabled (15-min cycle)."
+fi
+
+# Alpha monitor (enable if Telegram API credentials and channels are set)
+if grep -q "^TELEGRAM_API_ID=." .env 2>/dev/null && grep -q "^ALPHA_CHANNELS=." .env 2>/dev/null; then
+  sudo systemctl enable --now trading-alpha.service
+  echo "    Alpha monitor enabled — watching configured Telegram channels."
 fi
 
 # Rescreen (bi-weekly basket refresh)

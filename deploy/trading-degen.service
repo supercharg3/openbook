@@ -1,0 +1,12 @@
+[Unit]
+Description=Openbook degen sleeve (hyper-active crypto momentum)
+After=network.target
+
+[Service]
+Type=oneshot
+User=trader
+WorkingDirectory=/home/trader/ai-trading-system
+EnvironmentFile=/home/trader/ai-trading-system/.env
+ExecStart=/home/trader/ai-trading-system/.venv/bin/python -m src.run_degen
+StandardOutput=journal
+StandardError=journal

@@ -63,11 +63,14 @@ class Config:
     exa_api_key: str | None = field(default_factory=lambda: _get("EXA_API_KEY"))
     exa_polls_per_hour: int = field(default_factory=lambda: _get_int("EXA_POLLS_PER_HOUR", 2))
 
-    # Telegram
+    # Telegram — bot (required)
     telegram_bot_token: str | None = field(default_factory=lambda: _get("TELEGRAM_BOT_TOKEN"))
     telegram_chat_id: str | None = field(default_factory=lambda: _get("TELEGRAM_CHAT_ID"))
     # Forum-topic id (message_thread_id) the bot is scoped to. Blank = no topic / discovery mode.
     telegram_topic_id: int | None = field(default_factory=lambda: _get_int_or_none("TELEGRAM_TOPIC_ID"))
+    # Telegram user account (for alpha channel monitor via telethon — different from bot token)
+    telegram_api_id: str | None = field(default_factory=lambda: _get("TELEGRAM_API_ID"))
+    telegram_api_hash: str | None = field(default_factory=lambda: _get("TELEGRAM_API_HASH"))
 
     # Trading mode + capital
     trading_mode: str = field(default_factory=lambda: _get("TRADING_MODE", "dry-run"))
@@ -84,13 +87,20 @@ class Config:
 
     # ── Sleeve selection + budgets ────────────────────────────────────────────
     # Comma-separated list of which sleeves to run. Omit a name to disable it completely.
-    # Valid names: pairs (crypto stat-arb), factor (diversified stocks), factor-ai (AI/semis), swing.
+    # Valid names: pairs, factor, factor-ai, swing, degen.
     sleeves_enabled: str = field(
-        default_factory=lambda: _get("SLEEVES_ENABLED", "pairs,factor,factor-ai,swing"))
+        default_factory=lambda: _get("SLEEVES_ENABLED", "pairs,factor,factor-ai,swing,degen"))
     # Swing sleeve: practice pot and the floor where the circuit breaker fires.
     swing_budget_usd: float = field(default_factory=lambda: _get_float("SWING_BUDGET_USD", 1000.0))
     # Floor as a fraction of swing_budget_usd (default 0.20 → halt at 80% loss).
     swing_floor_pct: float = field(default_factory=lambda: _get_float("SWING_FLOOR_PCT", 0.20))
+    # Degen sleeve: hyper-active crypto momentum sleeve.
+    degen_budget_usd: float = field(default_factory=lambda: _get_float("DEGEN_BUDGET_USD", 300.0))
+    # Floor as a fraction of degen_budget_usd (default 0.30 → halt at 70% of budget).
+    degen_floor_pct: float = field(default_factory=lambda: _get_float("DEGEN_FLOOR_PCT", 0.30))
+    # Alpha channel monitor: comma-separated Telegram channel usernames to watch.
+    alpha_channels: str | None = field(default_factory=lambda: _get("ALPHA_CHANNELS"))
+    alpha_session_file: str | None = field(default_factory=lambda: _get("ALPHA_SESSION_FILE"))
 
     # Paths / scheduling
     db_path: str = field(default_factory=lambda: _get("DB_PATH", "./data/trading.db"))
@@ -108,8 +118,11 @@ class Config:
 
     @property
     def swing_floor_usd(self) -> float:
-        """Dollar floor for the swing sleeve — halt line."""
         return self.swing_budget_usd * self.swing_floor_pct
+
+    @property
+    def degen_floor_usd(self) -> float:
+        return self.degen_budget_usd * self.degen_floor_pct
 
     def stock_sleeve_budget(self, enabled_stock_sleeves: list[str]) -> float:
         """Per-sleeve budget: total stock capital split equally across enabled stock sleeves.

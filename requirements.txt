@@ -7,8 +7,9 @@ numpy>=1.24.0
 anthropic>=0.39.0          # Claude Haiku sentiment scoring
 exa-py>=1.0.0              # News / web search alpha
 
-# Telegram bot
+# Telegram bot + alpha channel monitor
 python-telegram-bot>=21.0
+telethon>=1.36.0             # reads Telegram channels as a user (alpha monitor)
 
 # Config
 python-dotenv>=1.0.0
