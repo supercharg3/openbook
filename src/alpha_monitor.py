@@ -257,9 +257,12 @@ def poll_once(channels: list[str], cfg, db) -> None:
                 verdict = research_alpha(ticker, signal["direction"], signal["context"], cfg)
                 action = route_signal(ticker, verdict, signal["direction"], signal["confidence"], signal["context"], db)
                 dir_emoji = "🟢" if signal["direction"] == "LONG" else "🔴"
+                from .names import display as _display
+                name = _display(ticker)
+                ticker_label = f"{ticker} ({name})" if name != ticker else ticker
                 header = (
                     f"📡 <b>Alpha Signal</b> · @{channel}\n\n"
-                    f"{dir_emoji} <b>{ticker}</b> · {signal['direction']} · {signal['confidence'].lower()} confidence\n"
+                    f"{dir_emoji} <b>{ticker_label}</b> · {signal['direction']} · {signal['confidence'].lower()} confidence\n"
                     f"<i>{signal['context']}</i>\n\n"
                     f"<b>Action:</b> {action}\n\n"
                     f"{'─' * 20}\n"
