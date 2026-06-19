@@ -93,10 +93,18 @@ def _degen_status_lines(db, degen_rows, cfg, price_feed) -> list[str]:
                          f"{'🟢' if u >= 0 else '🔴'} {_sd(u)}")
     halted = db.get_state("degen_halted") == "1"
     state = "⛔ HALTED" if halted else "running · 15-min cycle"
-    return ["", "🎰 <b>DEGEN — active crypto momentum</b>",
-            f"<b>Pot:</b> ${total:,.0f}  [{state}]",
-            f"<b>Floor:</b> ${cfg.degen_floor_usd:,.0f} (auto-halts here · started ${cfg.degen_budget_usd:,.0f})",
-            "<b>Positions:</b>"] + (pos_lines or ["  • none open"])
+    lines = ["", "🎰 <b>DEGEN — active crypto momentum</b>",
+             f"<b>Pot:</b> ${total:,.0f}  [{state}]",
+             f"<b>Floor:</b> ${cfg.degen_floor_usd:,.0f} (auto-halts here · started ${cfg.degen_budget_usd:,.0f})",
+             "<b>Positions:</b>"] + (pos_lines or ["  • none open"])
+    # Price watches — pending WAIT signals
+    watches = [dict(w) for w in db.active_watches() if w["sleeve"] == "degen"]
+    if watches:
+        lines.append("<b>Watching for entry:</b>")
+        for w in watches:
+            cond = "dips to" if w["condition"] == "lte" else "rallies to"
+            lines.append(f"  • {_esc(w['ticker'])} {w['direction']} — enter when {cond} ${w['target_price']:,.4g}")
+    return lines
 
 
 def _stock_status_lines(db, stock_rows) -> list[str]:

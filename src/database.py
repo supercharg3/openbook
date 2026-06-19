@@ -92,6 +92,21 @@ CREATE TABLE IF NOT EXISTS veto_log (
     reason          TEXT,
     price_at        REAL                         -- price when judged (to measure: did vetoes underperform?)
 );
+
+CREATE TABLE IF NOT EXISTS price_watches (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at      TEXT    NOT NULL,
+    expires_at      TEXT    NOT NULL,            -- auto-expire after 7 days
+    ticker          TEXT    NOT NULL,            -- e.g. DOGE/USDT or NVDA
+    direction       TEXT    NOT NULL,            -- LONG | SHORT
+    target_price    REAL    NOT NULL,            -- enter when price reaches this level
+    condition       TEXT    NOT NULL,            -- 'lte' = buy dip (long) | 'gte' = buy rally (short)
+    sleeve          TEXT    NOT NULL,            -- 'degen' | 'swing'
+    context         TEXT,                        -- original channel signal context
+    status          TEXT    NOT NULL DEFAULT 'watching',  -- watching | triggered | expired
+    triggered_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_watches_status ON price_watches(status);
 """
 
 
@@ -208,6 +223,40 @@ class Database:
                 (a, b),
             ).fetchone()
             return row["correlation"] if row else None
+
+    # ── Price watches (WAIT signals that monitor for a better entry) ────────────
+    def add_price_watch(self, ticker: str, direction: str, target_price: float,
+                        condition: str, sleeve: str, context: str,
+                        created_at: str, expires_at: str) -> int:
+        with self._conn() as conn:
+            cur = conn.execute(
+                """INSERT INTO price_watches
+                   (created_at, expires_at, ticker, direction, target_price, condition, sleeve, context)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (created_at, expires_at, ticker, direction, target_price, condition, sleeve, context),
+            )
+            return int(cur.lastrowid)
+
+    def active_watches(self) -> list[sqlite3.Row]:
+        with self._conn() as conn:
+            return list(conn.execute(
+                "SELECT * FROM price_watches WHERE status='watching' ORDER BY created_at"
+            ))
+
+    def trigger_watch(self, watch_id: int, triggered_at: str) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE price_watches SET status='triggered', triggered_at=? WHERE id=?",
+                (triggered_at, watch_id),
+            )
+
+    def expire_watches(self, now: str) -> int:
+        with self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE price_watches SET status='expired' WHERE status='watching' AND expires_at < ?",
+                (now,),
+            )
+            return cur.rowcount
 
     # ── Thesis order queue (chat enqueues, trading loop executes) ─────────────
     def add_thesis_order(self, action: str, pair: str, size_pct: float, created_at: str) -> int:

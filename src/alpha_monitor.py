@@ -121,41 +121,60 @@ def parse_signal(message: str, cfg) -> dict | None:
 
 # ── Routing ───────────────────────────────────────────────────────────────────
 
-def route_signal(ticker: str, verdict: str, direction: str, confidence: str, db) -> str:
+def _parse_wait_price(verdict: str) -> float | None:
+    """Extract the target price from a WAIT verdict. e.g. 'WAIT - near $0.12' → 0.12"""
+    import re
+    m = re.search(r'WAIT[^$]*\$([0-9,.]+)', verdict, re.IGNORECASE)
+    if m:
+        try:
+            return float(m.group(1).replace(",", ""))
+        except ValueError:
+            pass
+    return None
+
+
+def route_signal(ticker: str, verdict: str, direction: str, confidence: str, context: str, db) -> str:
     """Queue the trade in the right sleeve. Returns a description of the action taken.
 
-    AVOID  → hard block, no trade.
-    WAIT   → trade at half size (the channel said it's interesting; the panel just wants a better entry).
-    BUY NOW → full size.
-    LOW confidence parse → half size regardless of verdict.
+    AVOID   → hard block, no trade.
+    WAIT    → set a price watch; enter automatically when price reaches the target.
+    BUY NOW → enter immediately at full size.
     """
     verdict_up = verdict.upper()
     if "AVOID" in verdict_up:
         return "no-trade (panel says AVOID — hard pass)"
 
-    is_wait = "WAIT" in verdict_up
-    is_low_conf = confidence == "LOW"
-    size_note = ""
-    size_pct = 5.0
-    if is_wait or is_low_conf:
-        size_pct = 2.5
-        size_note = " at half size (WAIT/low-confidence)"
-
     venue = classify_venue(ticker)
     now = datetime.now(timezone.utc).isoformat()
+    sleeve = "degen" if venue == "crypto" else "swing"
 
+    if "WAIT" in verdict_up:
+        target = _parse_wait_price(verdict)
+        if target:
+            from datetime import timedelta
+            expires = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+            # For longs: buy when price dips to target (lte). For shorts: buy when price rises to target (gte).
+            condition = "lte" if direction == "LONG" else "gte"
+            # Normalise ticker to exchange format for crypto
+            watch_ticker = ticker if "/" in ticker else f"{ticker}/USDT"
+            db.add_price_watch(watch_ticker, direction, target, condition, sleeve, context, now, expires)
+            return f"👀 watching for entry near ${target:,.4g} (expires 7d) — will auto-enter when price arrives"
+        else:
+            return "no-trade (WAIT but no price target found in verdict)"
+
+    # BUY NOW — enter immediately
     if venue == "crypto":
-        # Store direction + size modifier for the degen sleeve to pick up
-        db.set_state(f"degen_alpha_{ticker}", f"{direction}|{size_pct}|{now}", now)
-        return f"queued for degen sleeve{size_note}"
+        watch_ticker = ticker if "/" in ticker else f"{ticker}/USDT"
+        db.set_state(f"degen_alpha_{watch_ticker}", f"{direction}|5.0|{now}", now)
+        return "entering now → degen sleeve"
 
     if venue == "stock":
         with db._conn() as conn:
             conn.execute(
                 "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status) VALUES (?,?,?,?,?)",
-                (now, "buy" if direction == "LONG" else "sell", ticker, size_pct, "pending"),
+                (now, "buy" if direction == "LONG" else "sell", ticker, 5.0, "pending"),
             )
-        return f"queued for swing sleeve{size_note}"
+        return "entering now → swing sleeve"
 
     return "no-trade (unknown asset type)"
 
@@ -229,7 +248,7 @@ def poll_once(channels: list[str], cfg, db) -> None:
             if signal:
                 ticker = signal["ticker"]
                 verdict = research_alpha(ticker, signal["direction"], signal["context"], cfg)
-                action = route_signal(ticker, verdict, signal["direction"], signal["confidence"], db)
+                action = route_signal(ticker, verdict, signal["direction"], signal["confidence"], signal["context"], db)
                 dir_emoji = "🟢" if signal["direction"] == "LONG" else "🔴" if signal["direction"] == "SHORT" else "⚪"
                 header = (
                     f"📡 <b>Alpha Signal</b> · @{channel}\n\n"

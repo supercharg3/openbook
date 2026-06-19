@@ -103,6 +103,36 @@ def main() -> None:
             emoji = "✅" if ret > 0 else "🔴"
             msgs.append(f"{emoji} <b>{sym}</b> closed {ret*100:+.1f}% · <i>{reason}</i>")
 
+    # ── price watch triggers (alpha WAIT signals waiting for their entry) ────────
+    now_str = _now()
+    db.expire_watches(now_str)
+    for watch in db.active_watches():
+        w = dict(watch)
+        if w["sleeve"] != "degen" or w["ticker"] in bets:
+            continue
+        px = signals.get(w["ticker"], {}).get("px")
+        if not px:
+            continue
+        hit = (w["condition"] == "lte" and px <= w["target_price"]) or \
+              (w["condition"] == "gte" and px >= w["target_price"])
+        if hit and len(bets) < MAX_BETS and cash >= bet_size(pot):
+            size = bet_size(pot)
+            pos = exec_client.open_position(w["ticker"], w["direction"].lower(), size, 1.0, "degen")
+            rec = TradeRecord(
+                pair=w["ticker"], side=w["direction"].lower(), strategy="degen",
+                entry_price=pos.entry_price, size_usd=pos.size_usd,
+                opened_at=pos.opened_at or now_str, leverage=1.0,
+                is_paper=not (cfg.is_live and os.environ.get("ALLOW_LIVE_ORDERS") == "1"),
+            )
+            pos.db_id = db.open_trade(rec)
+            db.trigger_watch(w["id"], now_str)
+            cash -= pos.size_usd
+            bets[w["ticker"]] = {"pair": w["ticker"], "side": w["direction"].lower(),
+                                  "strategy": "degen", "entry_price": pos.entry_price,
+                                  "size_usd": pos.size_usd, "opened_at": now_str, "id": pos.db_id}
+            msgs.append(f"⏰ <b>{w['ticker']}</b> watch triggered at ${px:,.4g} "
+                        f"(target was ${w['target_price']:,.4g}) — entered ${size:.0f}")
+
     # ── new entries ───────────────────────────────────────────────────────────
     if len(bets) < MAX_BETS:
         slots = MAX_BETS - len(bets)
