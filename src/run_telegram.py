@@ -40,7 +40,7 @@ def _esc(s) -> str:
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _swing_status_lines(db, swing_rows, cfg) -> list[str]:
+def _swing_status_lines(db, swing_rows, cfg, is_live: bool = False) -> list[str]:
     """The aggressive Agentic Conviction swing sleeve: pot value, the protective floor, open bets."""
     from .names import display
     prices = {}
@@ -72,14 +72,15 @@ def _swing_status_lines(db, swing_rows, cfg) -> list[str]:
     from .swing import floor_value
     floor = floor_value(cfg.swing_budget_usd, cfg.swing_floor_usd, hwm)
     halted = db.get_state("swing_halted") == "1"
-    state = "⛔ HALTED (hit floor)" if halted else "running"
+    mode_tag = "LIVE" if is_live else "Paper"
+    state = "⛔ HALTED (hit floor)" if halted else f"running · {mode_tag}"
     return ["", "🎯 <b>SWING — agentic conviction</b> (aggressive)",
             f"<b>Pot:</b> ${total:,.0f}  [{state}]",
-            f"<b>Floor:</b> ${floor:,.0f} (auto-halts here · started $1,000)",
+            f"<b>Floor:</b> ${floor:,.0f} (auto-halts here · started ${cfg.swing_budget_usd:,.0f})",
             "<b>Bets:</b>"] + (pos or ["  • none open"])
 
 
-def _degen_status_lines(db, degen_rows, cfg, price_feed) -> list[str]:
+def _degen_status_lines(db, degen_rows, cfg, price_feed, is_live: bool = False) -> list[str]:
     """Hyper-active crypto momentum sleeve status."""
     from .names import display
     cash = float(db.get_state("degen_cash") or cfg.degen_budget_usd)
@@ -92,7 +93,8 @@ def _degen_status_lines(db, degen_rows, cfg, price_feed) -> list[str]:
         pos_lines.append(f"  • {_esc(display(r['pair']))} — ${val:,.0f} "
                          f"{'🟢' if u >= 0 else '🔴'} {_sd(u)}")
     halted = db.get_state("degen_halted") == "1"
-    state = "⛔ HALTED" if halted else "running · 15-min cycle"
+    mode_tag = "LIVE" if is_live else "Paper"
+    state = "⛔ HALTED" if halted else f"running · 15-min cycle · {mode_tag}"
     lines = ["", "🎰 <b>DEGEN — active crypto momentum</b>",
              f"<b>Pot:</b> ${total:,.0f}  [{state}]",
              f"<b>Floor:</b> ${cfg.degen_floor_usd:,.0f} (auto-halts here · started ${cfg.degen_budget_usd:,.0f})",
@@ -206,9 +208,9 @@ def main() -> None:
         if stock_rows:
             out += _stock_status_lines(db, stock_rows)
         if swing_rows or db.get_state("swing_hwm"):
-            out += _swing_status_lines(db, swing_rows, cfg)
+            out += _swing_status_lines(db, swing_rows, cfg, is_live=cfg.is_live)
         if "degen" in cfg.sleeves_enabled_set:
-            out += _degen_status_lines(db, degen_rows, cfg, price_feed)
+            out += _degen_status_lines(db, degen_rows, cfg, price_feed, is_live=cfg.is_live)
         return "\n".join(out)
 
     def report_provider(period: str | None = None) -> str:
