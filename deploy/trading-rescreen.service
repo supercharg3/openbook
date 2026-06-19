@@ -1,0 +1,10 @@
+[Unit]
+Description=AI Trading — monthly pair re-screen (proposes a refreshed basket)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=trader
+WorkingDirectory=/home/trader/ai-trading-system
+EnvironmentFile=/home/trader/ai-trading-system/.env
+ExecStart=/home/trader/ai-trading-system/.venv/bin/python -m src.rescreen

@@ -1,0 +1,26 @@
+# systemd unit: the main trading loop (signal → risk → execution).
+# Long-lived; Restart=on-failure recovers a crashed cycle. Paper trading and live both run here;
+# the mode is controlled by TRADING_MODE in .env, and live orders need ALLOW_LIVE_ORDERS=1.
+#
+# Install:
+#   sudo cp deploy/trading-loop.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now trading-loop
+
+[Unit]
+Description=AI Trading — main trading loop
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=trader
+WorkingDirectory=/home/trader/ai-trading-system
+EnvironmentFile=/home/trader/ai-trading-system/.env
+ExecStart=/home/trader/ai-trading-system/.venv/bin/python -m src.run_trade
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

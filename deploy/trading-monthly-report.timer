@@ -1,0 +1,10 @@
+# 1st of each month at 08:10 SGT.
+[Unit]
+Description=AI Trading — monthly report on 1st of month 8:10am SGT
+
+[Timer]
+OnCalendar=*-*-01 08:10:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

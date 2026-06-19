@@ -1,0 +1,25 @@
+# Core
+ccxt>=4.2.0                  # Unified Binance API (crypto + TradFi futures)
+pandas>=2.0.0               # OHLCV / correlation math
+numpy>=1.24.0
+
+# AI analysis
+anthropic>=0.39.0          # Claude Haiku sentiment scoring
+exa-py>=1.0.0              # News / web search alpha
+
+# Telegram bot
+python-telegram-bot>=21.0
+
+# Config
+python-dotenv>=1.0.0
+
+# Dev / test
+pytest>=8.0.0
+
+# NOTE: Freqtrade runs in its own Docker container (see freqtrade/).
+# It is not a pip dependency of this package.
+yfinance>=0.2.40
+alpaca-py>=0.20
+
+# Web dashboard
+flask>=3.0.0

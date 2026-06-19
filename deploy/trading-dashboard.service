@@ -1,0 +1,14 @@
+[Unit]
+Description=AI Trading — web dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/ai-trading-system
+EnvironmentFile=/root/ai-trading-system/.env
+ExecStart=/root/ai-trading-system/venv/bin/python -m src.run_dashboard
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

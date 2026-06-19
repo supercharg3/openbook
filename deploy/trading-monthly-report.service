@@ -1,0 +1,9 @@
+[Unit]
+Description=AI Trading — monthly report
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/ai-trading-system
+EnvironmentFile=/root/ai-trading-system/.env
+ExecStart=/root/ai-trading-system/venv/bin/python -m src.run_monthly_report

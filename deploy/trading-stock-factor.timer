@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the stock factor sleeve daily in the US calm window
+
+[Timer]
+# Server is Asia/Singapore. US midday (~14:00 ET) = 02:00 SGT; US Mon-Fri sessions = SGT Tue-Sat.
+OnCalendar=Tue..Sat 02:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

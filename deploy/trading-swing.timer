@@ -1,0 +1,7 @@
+[Unit]
+Description=Run the agentic swing sleeve daily in the US session
+[Timer]
+OnCalendar=Tue..Sat 02:30:00
+Persistent=true
+[Install]
+WantedBy=timers.target

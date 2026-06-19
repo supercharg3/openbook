@@ -1,0 +1,10 @@
+# Every Sunday at 08:05 SGT (5 minutes after the daily report so they don't overlap).
+[Unit]
+Description=AI Trading — weekly report at 8:05am SGT every Sunday
+
+[Timer]
+OnCalendar=Sun *-*-* 08:05:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

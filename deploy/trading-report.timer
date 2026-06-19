@@ -1,0 +1,13 @@
+# systemd timer: fire the daily report at 08:00 Singapore time every day.
+# The VPS is set to Asia/Singapore (see deploy/setup_vps.sh), so OnCalendar is local = SGT.
+
+[Unit]
+Description=AI Trading — daily report at 8am SGT
+
+[Timer]
+OnCalendar=*-*-* 08:00:00
+Persistent=true
+# If the VPS was down at 08:00, send as soon as it's back (Persistent=true).
+
+[Install]
+WantedBy=timers.target

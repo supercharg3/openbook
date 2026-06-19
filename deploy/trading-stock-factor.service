@@ -1,0 +1,13 @@
+[Unit]
+Description=AI Trading — autonomous stock factor sleeve (daily, paper)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=trader
+WorkingDirectory=/home/trader/ai-trading-system
+EnvironmentFile=/home/trader/ai-trading-system/.env
+ExecStart=/home/trader/ai-trading-system/.venv/bin/python -m src.run_stock_factor
+StandardOutput=journal
+StandardError=journal
