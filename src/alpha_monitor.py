@@ -65,22 +65,27 @@ def fetch_messages(channel: str) -> list[dict]:
 
 # ── Signal parsing (Claude Haiku — cheap, fast) ───────────────────────────────
 
-PARSE_PROMPT = """You are extracting trading signals from a Telegram alpha channel message.
+PARSE_PROMPT = """You are extracting trading signals from a Telegram alpha channel.
+This channel is specifically for sharing trade ideas — be liberal about extracting signals.
+Any message with a ticker + a directional lean (bullish/bearish/long/short/buy/sell/trade) counts.
 
 Message:
 {message}
 
-Extract the trading signal. Respond in this exact format (one line each, no extra text):
-TICKER: <asset ticker uppercase, e.g. DOGE, SOL, NVDA, BTC — or NONE if no clear ticker>
-DIRECTION: <LONG | SHORT | NEUTRAL | NONE>
-CONFIDENCE: <HIGH | MEDIUM | LOW> — how clearly is this a trade call vs noise/commentary?
-CONTEXT: <one sentence: why they like this trade>
+Respond in this exact format (one line each, no extra text):
+TICKER: <asset ticker uppercase, e.g. DOGE, SOL, NVDA, BTC — or NONE if truly no asset mentioned>
+DIRECTION: <LONG | SHORT | NONE>
+CONFIDENCE: <HIGH | MEDIUM | LOW>
+  HIGH = explicit trade call ("buy X", "long X", "short X", price target given)
+  MEDIUM = directional lean with a ticker ("X looking bullish", "X breaking out", news that implies direction)
+  LOW = ticker mentioned but no clear directional view
+CONTEXT: <one sentence: the key reason or catalyst>
 
-If this is not a trade signal (news, memes, commentary), output TICKER: NONE."""
+Only output TICKER: NONE if the message has no financial asset at all (pure memes, admin, off-topic)."""
 
 
 def parse_signal(message: str, cfg) -> dict | None:
-    """Use Claude Haiku to extract a structured signal. Returns None if not a trade call."""
+    """Use Claude Haiku to extract a structured signal. Returns None only if no asset at all."""
     if not cfg.anthropic_api_key:
         return None
     try:
@@ -100,7 +105,8 @@ def parse_signal(message: str, cfg) -> dict | None:
         ticker = result.get("TICKER", "NONE").upper()
         direction = result.get("DIRECTION", "NONE").upper()
         confidence = result.get("CONFIDENCE", "LOW").upper()
-        if ticker == "NONE" or direction == "NONE" or confidence == "LOW":
+        # Drop only if there's genuinely no asset or no direction at all
+        if ticker == "NONE" or direction == "NONE":
             return None
         return {
             "ticker": ticker,
@@ -115,34 +121,99 @@ def parse_signal(message: str, cfg) -> dict | None:
 
 # ── Routing ───────────────────────────────────────────────────────────────────
 
-def route_signal(ticker: str, verdict: str, direction: str, db) -> str:
-    """Queue the trade in the right sleeve. Returns a description of the action taken."""
-    if "AVOID" in verdict.upper():
-        return "no-trade (research says AVOID)"
+def route_signal(ticker: str, verdict: str, direction: str, confidence: str, db) -> str:
+    """Queue the trade in the right sleeve. Returns a description of the action taken.
+
+    AVOID  → hard block, no trade.
+    WAIT   → trade at half size (the channel said it's interesting; the panel just wants a better entry).
+    BUY NOW → full size.
+    LOW confidence parse → half size regardless of verdict.
+    """
+    verdict_up = verdict.upper()
+    if "AVOID" in verdict_up:
+        return "no-trade (panel says AVOID — hard pass)"
+
+    is_wait = "WAIT" in verdict_up
+    is_low_conf = confidence == "LOW"
+    size_note = ""
+    size_pct = 5.0
+    if is_wait or is_low_conf:
+        size_pct = 2.5
+        size_note = " at half size (WAIT/low-confidence)"
 
     venue = classify_venue(ticker)
     now = datetime.now(timezone.utc).isoformat()
 
     if venue == "crypto":
-        db.set_state(f"degen_alpha_{ticker}", f"{direction}|{now}", now)
-        return "queued for degen sleeve (crypto, next 15-min cycle)"
+        # Store direction + size modifier for the degen sleeve to pick up
+        db.set_state(f"degen_alpha_{ticker}", f"{direction}|{size_pct}|{now}", now)
+        return f"queued for degen sleeve{size_note}"
 
     if venue == "stock":
         with db._conn() as conn:
             conn.execute(
                 "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status) VALUES (?,?,?,?,?)",
-                (now, "buy" if direction == "LONG" else "sell", ticker, 5.0, "pending"),
+                (now, "buy" if direction == "LONG" else "sell", ticker, size_pct, "pending"),
             )
-        return "queued for swing sleeve (stock thesis)"
+        return f"queued for swing sleeve{size_note}"
 
     return "no-trade (unknown asset type)"
+
+
+# ── Alpha-context research (lighter gate than the general look-into command) ──
+
+ALPHA_JUDGE = """You are reviewing a trade idea sourced from a curated alpha channel. The idea has
+already been human-filtered; your job is to catch genuine disasters, not gatekeep good setups.
+
+Default stance: trade it UNLESS you see a clear red flag (blowup risk, market-wide panic, outright
+fraud signal, or the thesis is factually wrong based on the data). WAIT is fine for timing; AVOID
+is for real danger. Don't default to AVOID just because the edge is uncertain — that's every trade.
+
+Output (plain text, concise for a phone):
+VERDICT: [BUY NOW] | [WAIT - near $X] | [AVOID]
+WHY: 1-2 lines — the key bull case and the one thing that could break it
+INVALIDATION: what proves it wrong in one line
+CONFIDENCE: low / medium / high"""
+
+
+def research_alpha(subject: str, direction: str, context: str, cfg) -> str:
+    """Lighter research pass for alpha channel signals — catches disasters, doesn't gatekeep."""
+    if not cfg.anthropic_api_key:
+        return "Research unavailable (no ANTHROPIC_API_KEY)."
+    try:
+        from anthropic import Anthropic
+        from .research import gather_context, _context_str, _price_line, ROLES
+        from .assistant import _plain
+        from concurrent.futures import ThreadPoolExecutor
+
+        client = Anthropic(api_key=cfg.anthropic_api_key)
+        ctx_data = gather_context(subject, cfg)
+        ctx = _context_str(subject, ctx_data)
+        price_hdr = _price_line(ctx_data)
+
+        def ask(system, user, mt=300):
+            r = client.messages.create(model=cfg.claude_model, max_tokens=mt, system=system,
+                                       messages=[{"role": "user", "content": user}])
+            return r.content[0].text if r.content else ""
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = {role: pool.submit(ask, prompt, ctx) for role, prompt in ROLES.items()}
+            views = {role: f.result() for role, f in futures.items()}
+
+        judge_input = (
+            f"Alpha channel direction: {direction}\nChannel context: {context}\n\n"
+            f"{ctx}\n\nBULL:\n{views['Bull']}\nBEAR:\n{views['Bear']}\nRISK:\n{views['Risk']}"
+        )
+        verdict = ask(ALPHA_JUDGE, judge_input, mt=400)
+        return _plain(f"🔬 {subject} ({direction})\n{price_hdr}\n\n{verdict}")
+    except Exception as e:
+        return f"Research failed ({type(e).__name__})."
 
 
 # ── Main poll loop ────────────────────────────────────────────────────────────
 
 def poll_once(channels: list[str], cfg, db) -> None:
     """One poll pass across all configured channels. Called every POLL_INTERVAL seconds."""
-    from .research import research
 
     for channel in channels:
         messages = fetch_messages(channel)
@@ -157,8 +228,8 @@ def poll_once(channels: list[str], cfg, db) -> None:
             signal = parse_signal(msg["text"], cfg)
             if signal:
                 ticker = signal["ticker"]
-                verdict = research(ticker, cfg)
-                action = route_signal(ticker, verdict, signal["direction"], db)
+                verdict = research_alpha(ticker, signal["direction"], signal["context"], cfg)
+                action = route_signal(ticker, verdict, signal["direction"], signal["confidence"], db)
                 dir_emoji = "🟢" if signal["direction"] == "LONG" else "🔴" if signal["direction"] == "SHORT" else "⚪"
                 header = (
                     f"📡 <b>Alpha Signal</b> · @{channel}\n\n"
