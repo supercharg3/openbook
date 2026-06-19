@@ -18,6 +18,22 @@ NAMES = {
     "MCD": "McDonald's", "NKE": "Nike", "DIS": "Disney", "NFLX": "Netflix",
     "BA": "Boeing", "CAT": "Caterpillar", "GE": "GE Aerospace", "HON": "Honeywell",
     "UNP": "Union Pacific", "LIN": "Linde",
+    # ── Semis / optical / AI infrastructure (likely paste_trade tickers) ────────
+    "MRVL": "Marvell", "ARM": "Arm Holdings", "AMAT": "Applied Materials",
+    "LRCX": "Lam Research", "KLAC": "KLA", "ASML": "ASML", "TSM": "TSMC",
+    "LITE": "Lumentum", "COHR": "Coherent", "IIVI": "Coherent", "FNSR": "Viavi Solutions",
+    "AAOI": "Applied Optoelectronics", "NPAB": "NeoPhotonics", "CIEN": "Ciena",
+    "VIAV": "Viavi Solutions", "ACIA": "Acacia Communications",
+    "SMCI": "Super Micro", "CRDO": "Credo Technology", "ONTO": "Onto Innovation",
+    "WOLF": "Wolfspeed", "ALGM": "Allegro MicroSystems", "SITM": "SiTime",
+    "SWKS": "Skyworks", "QRVO": "Qorvo", "MPWR": "Monolithic Power",
+    "MCHP": "Microchip Technology", "ADI": "Analog Devices", "TER": "Teradyne",
+    "ENTG": "Entegris", "ACLS": "Axcelis Technologies", "FORM": "FormFactor",
+    # ── ETFs (paste_trade often calls these) ────────────────────────────────────
+    "EWY": "iShares South Korea ETF", "SKHX": "SK Hynix",
+    "SMH": "VanEck Semiconductor ETF", "SOXX": "iShares Semiconductor ETF",
+    "QQQ": "Invesco QQQ (Nasdaq 100)", "SPY": "S&P 500 ETF", "IWM": "Russell 2000 ETF",
+    "XLK": "Technology Select SPDR", "ARKK": "ARK Innovation ETF",
     # ── crypto coins ─────────────────────────────────────────────────────────
     "BTC": "Bitcoin", "ETH": "Ethereum", "SOL": "Solana", "BNB": "BNB", "XRP": "XRP",
     "DOGE": "Dogecoin", "ADA": "Cardano", "AVAX": "Avalanche", "LINK": "Chainlink",

@@ -47,17 +47,20 @@ def gather_context(subject: str, cfg) -> dict:
         except Exception as e:
             ctx["news_err"] = str(e)
     base = subject.upper().split()[0]
-    try:
-        from .ccxt_feed import build_binance
-        ex = build_binance(None, None)
-        for sym in (f"{base}/USDT", f"{base}/USDT:USDT"):
-            try:
-                ctx["price"] = float(ex.fetch_ticker(sym)["last"]); ctx["symbol"] = sym; break
-            except Exception:
-                continue
-    except Exception:
-        pass
-    if not ctx.get("price"):                       # not a Binance ticker → try it as a stock
+    from .venues import classify_venue
+    is_crypto = classify_venue(base) == "crypto"
+    if is_crypto:
+        try:
+            from .ccxt_feed import build_binance
+            ex = build_binance(None, None)
+            for sym in (f"{base}/USDT", f"{base}/USDT:USDT"):
+                try:
+                    ctx["price"] = float(ex.fetch_ticker(sym)["last"]); ctx["symbol"] = sym; break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+    if not ctx.get("price"):                       # stock ticker (or unknown) → try yfinance
         try:
             from .stocks import stock_quote
             px = stock_quote(base)
@@ -65,7 +68,7 @@ def gather_context(subject: str, cfg) -> dict:
                 ctx["price"] = px; ctx["symbol"] = f"{base} (stock)"
         except Exception:
             pass
-    if not ctx.get("price"):                       # still nothing → resolve crypto by name (CoinGecko)
+    if not ctx.get("price") and not is_crypto:    # last resort: CoinGecko name search
         try:
             from .coingecko import coin_price
             hit = coin_price(subject)
