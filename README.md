@@ -58,19 +58,20 @@ and a **conversational assistant**, all in your Telegram chat.
 - **Never** put an on-chain wallet's private key on a server. Openbook only uses exchange keys that
   can't withdraw.
 
-## Choose your path
+## Setup
 
-**Do you have [Claude Code](https://claude.ai/code)?**
-→ Point it at this repo and say *"set up Openbook for me."* It runs the full onboarding interview,
-recommends sleeves for your risk profile, and walks you through keys step by step. Easiest path.
+**Point your AI agent at this repo and say *"set up Openbook for me."*** It interviews you,
+recommends sleeves for your risk profile, and walks you through keys step by step. Then pick
+where to run it:
 
-**No Claude Code, want to try it first?**
-→ [Local setup](#local-setup-mac--laptop) below — runs on your Mac in ~20 minutes. Good for
-testing before committing to a server.
+| | Local Mac / laptop | 24/7 cloud server |
+|---|---|---|
+| **Best for** | Testing, trying it out | Always-on, full reporting |
+| **Cost** | Free | ~$6/mo (DigitalOcean) |
+| **Time** | ~20 min | ~90 min |
+| **Guide** | [Local Setup](#local-setup-mac--laptop) below | [DEPLOYMENT.md](DEPLOYMENT.md) |
 
-**Want it running 24/7?**
-→ [DEPLOYMENT.md](DEPLOYMENT.md) — end-to-end guide for a $6/mo cloud server with auto-restart
-and the full reporting stack. ~90 minutes.
+No AI agent? Follow the local or cloud guide manually — everything is documented.
 
 ---
 
