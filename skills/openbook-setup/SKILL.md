@@ -36,10 +36,21 @@ Map their answers to a tailored set, and explain *why*:
 - conservative / learning / stocks → **Factor (diversified stocks)** only.
 - balanced / both → **Factor + Market-Neutral crypto**.
 - aggressive / both / wants upside → add the **Swing** sleeve (across stocks + crypto).
+- highest variance / very active → add the **Degen** sleeve (crypto momentum, fires every 15 min,
+  set a small separate budget e.g. $300 — money they're genuinely fine losing).
 - For a **pro**: list all sleeves and let them choose + set allocations, custom universes (e.g. an
   AI-only Factor sleeve), and the swing floor. Keep dangerous knobs (high leverage) capped.
 Confirm the picks, then set them in the config (which sleeves are enabled + each sleeve's capital
 budget + any custom universe). Show them the plan before writing it.
+
+**Alpha channel monitor (optional, ask if aggressive or pro):** "Do you follow any public Telegram
+channels that share trade signals — crypto calls, market alerts, that kind of thing?" If yes:
+"The alpha monitor can watch those channels automatically. Every signal goes through a bear/bull
+research panel before anything trades, so it's not just blindly copying calls. WAIT signals set a
+price watch and auto-enter when the price arrives. No Telegram login needed — it reads the public
+web version of the channel." Ask them for the channel username (the part after `t.me/`), then set
+`ALPHA_CHANNELS=their_channel` in `.env`. If they have multiple: comma-separated. If they say no
+or aren't sure, leave it blank — it's easy to add later.
 
 ## Step 4 — Infrastructure
 "This needs to run around the clock. Do you have an always-on machine — a Mac mini, home server, old
