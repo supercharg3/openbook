@@ -44,7 +44,7 @@ def _stock_prices(tickers: list[str]) -> dict:
                            group_by="ticker", auto_adjust=True, threads=True)
         for t in tickers:
             try:
-                closes = (data[t] if len(tickers) > 1 else data)["Close"].dropna().tolist()
+                closes = data[t]["Close"].dropna().tolist()
                 if closes:
                     out[t] = {"px": float(closes[-1]), "venue": "stock",
                               "mom": float(closes[-1] / closes[0] - 1) if closes[0] else 0.0}
