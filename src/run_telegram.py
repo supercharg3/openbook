@@ -79,6 +79,26 @@ def _swing_status_lines(db, swing_rows, cfg) -> list[str]:
             "<b>Bets:</b>"] + (pos or ["  • none open"])
 
 
+def _degen_status_lines(db, degen_rows, cfg, price_feed) -> list[str]:
+    """Hyper-active crypto momentum sleeve status."""
+    from .names import display
+    cash = float(db.get_state("degen_cash") or cfg.degen_budget_usd)
+    total = cash
+    pos_lines = []
+    for r in degen_rows:
+        u = _unrealized(r, price_feed)
+        val = r["size_usd"] + u
+        total += val
+        pos_lines.append(f"  • {_esc(display(r['pair']))} — ${val:,.0f} "
+                         f"{'🟢' if u >= 0 else '🔴'} {_sd(u)}")
+    halted = db.get_state("degen_halted") == "1"
+    state = "⛔ HALTED" if halted else "running · 15-min cycle"
+    return ["", "🎰 <b>DEGEN — active crypto momentum</b>",
+            f"<b>Pot:</b> ${total:,.0f}  [{state}]",
+            f"<b>Floor:</b> ${cfg.degen_floor_usd:,.0f} (auto-halts here · started ${cfg.degen_budget_usd:,.0f})",
+            "<b>Positions:</b>"] + (pos_lines or ["  • none open"])
+
+
 def _stock_status_lines(db, stock_rows) -> list[str]:
     """Live status for BOTH Alpaca sleeves (Diversified + AI), each vs its own benchmark."""
     from .names import display
@@ -152,23 +172,23 @@ def main() -> None:
         # Binance, $10k practice stocks on Alpaca). Company/coin names, not just tickers.
         from .names import display
         all_rows = db.open_positions()
-        crypto_rows = [r for r in all_rows
-                       if not (str(r["strategy"]).startswith("factor") or str(r["strategy"]) == "swing")]
+        pairs_rows = [r for r in all_rows if str(r["strategy"]) == "pairs"]
         stock_rows = [r for r in all_rows if str(r["strategy"]).startswith("factor")]
         swing_rows = [r for r in all_rows if str(r["strategy"]) == "swing"]
+        degen_rows = [r for r in all_rows if str(r["strategy"]) == "degen"]
         mode = "Practice Money" if not cfg.is_live else "LIVE — real money"
         capital = float(db.get_state("capital", str(cfg.starting_capital_usd)))
         mtd = float(db.get_state("mtd_pnl", "0"))
         reserve = float(db.get_state("reserve", "0"))
 
         out = [f"📍 <b>STATUS</b>", "",
-               "🟡 <b>BINANCE — crypto</b>",
+               "🟡 <b>BINANCE — crypto pairs</b>",
                f"<b>Capital:</b> ${capital:,.2f}  [{mode}]",
                f"<b>Returns:</b> {_sd(mtd)} this month",
                f"<b>Profits:</b> ${reserve:,.2f} locked safe",
                "<b>Positions:</b>"]
-        if crypto_rows:
-            for r in crypto_rows:
+        if pairs_rows:
+            for r in pairs_rows:
                 u = _unrealized(r, price_feed)
                 out.append(f"  • {_esc(display(r['pair']))} — {r['side']} ${r['size_usd']:,.0f} "
                            f"{'🟢' if u >= 0 else '🔴'} {_sd(u)}")
@@ -179,6 +199,8 @@ def main() -> None:
             out += _stock_status_lines(db, stock_rows)
         if swing_rows or db.get_state("swing_hwm"):
             out += _swing_status_lines(db, swing_rows, cfg)
+        if "degen" in cfg.sleeves_enabled_set:
+            out += _degen_status_lines(db, degen_rows, cfg, price_feed)
         return "\n".join(out)
 
     def report_provider(period: str | None = None) -> str:
