@@ -72,11 +72,17 @@ class AlpacaExecutionClient:
         from alpaca.trading.requests import MarketOrderRequest
         from alpaca.trading.enums import OrderSide, TimeInForce
         symbol = _sym(pair)
-        req = MarketOrderRequest(
-            symbol=symbol, notional=round(size_usd, 2),      # notional = fractional sizing, no share math
-            side=OrderSide.BUY if side == "long" else OrderSide.SELL,
-            time_in_force=TimeInForce.DAY,
-        )
+        if side == "short":
+            # Alpaca rejects fractional notional short orders — must use whole-share qty
+            px = self._latest_price(symbol)
+            if not px:
+                raise ValueError(f"Can't price {symbol} for short order")
+            qty = max(1, int(size_usd / px))
+            req = MarketOrderRequest(symbol=symbol, qty=qty, side=OrderSide.SELL,
+                                     time_in_force=TimeInForce.DAY)
+        else:
+            req = MarketOrderRequest(symbol=symbol, notional=round(size_usd, 2),
+                                     side=OrderSide.BUY, time_in_force=TimeInForce.DAY)
         submitted = self.client.submit_order(req)
         filled = self._await_fill(submitted.id)
         avg = getattr(filled, "filled_avg_price", None)

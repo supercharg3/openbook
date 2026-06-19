@@ -20,7 +20,7 @@ from .swing import floor_value, should_halt, risk_budget, size_bet
 from .venues import classify_venue
 
 SGT = timezone(timedelta(hours=8))
-MAX_OPEN_BETS = 3
+MAX_OPEN_BETS = 8
 TAKE_PROFIT, STOP = 0.40, 0.30    # aggressive per-bet exits; the floor is the real backstop
 # Reasoned-aggressive watchlists: liquid, high-beta names the agent forms convictions on.
 STOCK_WATCHLIST = ["NVDA", "AMD", "PLTR", "CRDO", "ARM", "SMCI", "MU", "MRVL", "AVGO", "TSM",
@@ -171,7 +171,13 @@ def main() -> None:
         size = round(min(order["size_pct"] / 100 * value, size_bet(value, floor)), 2)
         if cash < size:
             break
-        pos = exec_for(ticker).open_position(ticker, side, size, 1.0, "swing")
+        try:
+            pos = exec_for(ticker).open_position(ticker, side, size, 1.0, "swing")
+        except Exception as e:
+            print(f"[swing] order failed for {ticker}: {e}")
+            with sqlite3.connect(cfg.db_path) as c:
+                c.execute("UPDATE thesis_orders SET status='failed' WHERE id=?", (order["id"],))
+            continue
         pos.db_id = db.open_trade(_rec(pos, cfg))
         cash -= pos.size_usd
         bets[ticker] = {"pair": ticker, "side": side, "strategy": "swing",
@@ -294,7 +300,13 @@ def run_thesis_now(cfg, db) -> None:
         size = round(min(order["size_pct"] / 100 * value, size_bet(value, floor)), 2)
         if cash < size:
             break
-        pos = exec_for(ticker).open_position(ticker, side, size, 1.0, "swing")
+        try:
+            pos = exec_for(ticker).open_position(ticker, side, size, 1.0, "swing")
+        except Exception as e:
+            print(f"[swing/thesis] order failed for {ticker}: {e}")
+            with sqlite3.connect(cfg.db_path) as c:
+                c.execute("UPDATE thesis_orders SET status='failed' WHERE id=?", (order["id"],))
+            continue
         pos.db_id = db.open_trade(_rec(pos, cfg))
         cash -= pos.size_usd
         bets[ticker] = {"pair": ticker, "side": side, "strategy": "swing",
