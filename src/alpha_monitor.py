@@ -175,11 +175,19 @@ def route_signal(ticker: str, verdict: str, direction: str, confidence: str, con
         return "entering now → degen sleeve"
 
     if venue == "stock":
-        with db._conn() as conn:
+        import sqlite3
+        with sqlite3.connect(db.db_path) as conn:
             conn.execute(
                 "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status) VALUES (?,?,?,?,?)",
                 (now, "buy" if direction == "LONG" else "sell", ticker, 5.0, "pending"),
             )
+        # Fire immediately — don't wait for the daily swing cycle
+        try:
+            from .run_swing import run_thesis_now
+            from .config import get_config as _cfg
+            run_thesis_now(_cfg(), db)
+        except Exception as e:
+            print(f"[alpha] immediate swing run failed: {e}")
         return "entering now → swing sleeve"
 
     return "no-trade (unknown asset type)"

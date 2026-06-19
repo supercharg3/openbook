@@ -212,6 +212,110 @@ def main() -> None:
     print(f"[swing] pot=${value:.0f} floor=${floor:.0f} bets={list(bets)} {msgs}")
 
 
+def run_thesis_now(cfg, db) -> None:
+    """Fast path — execute pending thesis orders immediately without the watchlist research pass.
+
+    Called by the alpha monitor right after a BUY NOW stock signal is routed. Runs exits + thesis
+    orders only; skips the daily watchlist pick so it's cheap (no Exa/Claude calls).
+    """
+    if "swing" not in cfg.sleeves_enabled_set:
+        return
+    if db.get_state("swing_halted") == "1":
+        return
+
+    START = cfg.swing_budget_usd
+    FLOOR0 = cfg.swing_floor_usd
+
+    from .alpaca import build_alpaca, AlpacaExecutionClient
+    from .ccxt_feed import CcxtPriceFeed, build_binance
+    from .execution import DryRunExecutionClient, CcxtExecutionClient
+    import os, sqlite3
+
+    stock_exec = AlpacaExecutionClient(build_alpaca(cfg), paper=cfg.alpaca_paper)
+    ex = build_binance(cfg.binance_api_key, cfg.binance_api_secret)
+    crypto_feed = CcxtPriceFeed(ex)
+    crypto_exec = (CcxtExecutionClient(ex, crypto_feed, os.environ.get("ALLOW_LIVE_ORDERS") == "1")
+                   if cfg.is_live else DryRunExecutionClient(cfg.swing_budget_usd, crypto_feed))
+
+    def exec_for(symbol):
+        return crypto_exec if classify_venue(symbol.split("/")[0]) == "crypto" else stock_exec
+
+    bets = {r["pair"]: r for r in db.open_positions() if str(r["strategy"]) == "swing"}
+    cash = float(db.get_state("swing_cash") or START)
+
+    def bet_value(r):
+        p = px.get(r["pair"], {}).get("px") or r["entry_price"]
+        return r["size_usd"] * (p / r["entry_price"]) if r["entry_price"] else r["size_usd"]
+
+    # price only the tickers we actually need
+    pending = sqlite3.connect(cfg.db_path)
+    pending.row_factory = sqlite3.Row
+    orders = pending.execute("SELECT * FROM thesis_orders WHERE status='pending' ORDER BY created_at").fetchall()
+    pending.close()
+
+    need = list({o["pair"] for o in orders} | set(bets.keys()))
+    stock_syms = [s for s in need if classify_venue(s.split("/")[0]) == "stock"]
+    crypto_syms = [s for s in need if classify_venue(s.split("/")[0]) == "crypto"]
+    px = {**_stock_prices(stock_syms), **_crypto_prices(crypto_syms, ex)}
+
+    value = cash + sum(bet_value(r) for r in bets.values())
+    hwm = max(float(db.get_state("swing_hwm") or START), value)
+    db.set_state("swing_hwm", str(hwm), _now())
+    floor = floor_value(START, FLOOR0, hwm)
+    msgs = []
+
+    if should_halt(value, floor):
+        for t, r in bets.items():
+            exec_for(t).close_position(_pos(r), "swing-halt")
+            db.close_trade(r["id"], closed_at=_now(), exit_price=px.get(t, {}).get("px", r["entry_price"]),
+                           pnl_usd=bet_value(r) - r["size_usd"], pnl_pct=0.0, fees_usd=0.0,
+                           exit_reason="circuit-breaker")
+        db.set_state("swing_halted", "1", _now())
+        _notify(cfg, f"⛔ Swing sleeve hit its floor (${floor:,.0f}). Halted.")
+        return
+
+    for order in orders:
+        if len(bets) >= MAX_OPEN_BETS or risk_budget(value, floor) < 50:
+            break
+        ticker = order["pair"]
+        side = "long" if order["action"] == "buy" else "short"
+        if ticker in bets:
+            with sqlite3.connect(cfg.db_path) as c:
+                c.execute("UPDATE thesis_orders SET status='skipped' WHERE id=?", (order["id"],))
+            continue
+        venue = classify_venue(ticker.split("/")[0])
+        if ticker not in px:
+            if venue == "stock":
+                px.update(_stock_prices([ticker]))
+            else:
+                px.update(_crypto_prices([ticker], ex))
+        if ticker not in px:
+            continue
+        size = round(min(order["size_pct"] / 100 * value, size_bet(value, floor)), 2)
+        if cash < size:
+            break
+        pos = exec_for(ticker).open_position(ticker, side, size, 1.0, "swing")
+        pos.db_id = db.open_trade(_rec(pos, cfg))
+        cash -= pos.size_usd
+        bets[ticker] = {"pair": ticker, "side": side, "strategy": "swing",
+                        "entry_price": pos.entry_price, "size_usd": pos.size_usd,
+                        "opened_at": pos.opened_at, "id": pos.db_id}
+        with sqlite3.connect(cfg.db_path) as c:
+            c.execute("UPDATE thesis_orders SET status='executed' WHERE id=?", (order["id"],))
+        from .names import display as _display
+        msgs.append(f"📡 <b>{_display(ticker)}</b> ${size:.0f} · alpha signal · {side}")
+
+    db.set_state("swing_cash", str(max(0.0, cash)), _now())
+    value = cash + sum(bet_value(r) for r in bets.values())
+    db.record_sleeve_nav("swing", __import__("datetime").datetime.now(SGT).strftime("%Y-%m-%d"), value, floor)
+
+    if msgs:
+        head = (f"🎯 <b>Swing Sleeve</b> · PAPER · alpha entry\n\n"
+                f"<b>Pot</b> ${value:,.0f}  <b>Floor</b> ${floor:,.0f}  <b>Holding</b> {len(bets)}\n\n")
+        _notify(cfg, head + "\n".join("• " + m for m in msgs))
+    print(f"[swing/thesis] executed {len(msgs)} order(s)")
+
+
 def _pos(row):
     from .execution import Position
     return Position(pair=row["pair"], side=row["side"], size_usd=row["size_usd"], leverage=1.0,
