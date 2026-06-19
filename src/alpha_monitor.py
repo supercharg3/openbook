@@ -159,11 +159,13 @@ def poll_once(channels: list[str], cfg, db) -> None:
                 ticker = signal["ticker"]
                 verdict = research(ticker, cfg)
                 action = route_signal(ticker, verdict, signal["direction"], db)
+                dir_emoji = "🟢" if signal["direction"] == "LONG" else "🔴" if signal["direction"] == "SHORT" else "⚪"
                 header = (
-                    f"📡 Alpha signal — @{channel}\n"
-                    f"{ticker} {signal['direction']} ({signal['confidence']} confidence)\n"
-                    f"Their take: {signal['context']}\n"
-                    f"Action: {action}\n\n"
+                    f"📡 <b>Alpha Signal</b> · @{channel}\n\n"
+                    f"{dir_emoji} <b>{ticker}</b> · {signal['direction']} · {signal['confidence'].lower()} confidence\n"
+                    f"<i>{signal['context']}</i>\n\n"
+                    f"<b>Action:</b> {action}\n\n"
+                    f"{'─' * 20}\n"
                 )
                 _notify(cfg, header + verdict)
             # Mark seen regardless — don't re-process on next poll
@@ -191,7 +193,7 @@ def _notify(cfg, text: str) -> None:
         async def _s():
             kw = {"message_thread_id": cfg.telegram_topic_id} if cfg.telegram_topic_id else {}
             await Bot(cfg.telegram_bot_token).send_message(
-                chat_id=cfg.telegram_chat_id, text=text[:4000], **kw)
+                chat_id=cfg.telegram_chat_id, text=text[:4000], parse_mode="HTML", **kw)
         asyncio.run(_s())
     except Exception as e:
         print(f"[alpha] notify failed: {e}")

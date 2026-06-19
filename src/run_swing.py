@@ -136,7 +136,8 @@ def main() -> None:
             db.close_trade(r["id"], closed_at=_now(), exit_price=p, pnl_usd=r["size_usd"] * ret,
                            pnl_pct=ret, fees_usd=0.0, exit_reason="take-profit" if ret > 0 else "stop")
             cash += bet_value(r); bets.pop(t)
-            msgs.append(f"Sold {t} at {ret * 100:+.0f}% ({'target hit' if ret > 0 else 'cut the loss'}).")
+            emoji = "✅" if ret > 0 else "🔴"
+            msgs.append(f"{emoji} <b>{t}</b> sold {ret*100:+.0f}% · {'target hit' if ret > 0 else 'cut the loss'}")
 
     # 3. one new reasoned bet across BOTH stocks and crypto, if there's room
     if len(bets) < MAX_OPEN_BETS and risk_budget(value, floor) >= 50:
@@ -155,15 +156,15 @@ def main() -> None:
                 pos.db_id = db.open_trade(_rec(pos, cfg)); cash -= pos.size_usd
                 tag = "strong conviction" if "BUY NOW" in vl else "momentum leader, no red flag"
                 why = verdict.split("WHY:", 1)[-1].split("INVALIDATION")[0].strip()[:220] if "WHY:" in verdict else ""
-                msgs.append(f"Opened {cand} ${size:.0f} ({tag}). Why: {why}")
+                msgs.append(f"🎯 Opened <b>{cand}</b> ${size:.0f} · {tag}\n<i>{why}</i>")
             else:
-                msgs.append(f"Passed on {cand} — the panel flagged a serious red flag (AVOID). Moving on.")
+                msgs.append(f"⏭ Passed on <b>{cand}</b> · panel flagged AVOID")
 
     db.set_state("swing_cash", str(max(0.0, cash)), _now())
     db.record_sleeve_nav("swing", datetime.now(SGT).strftime("%Y-%m-%d"), value, floor)
     if msgs:
-        head = (f"🎯 Agentic swing sleeve (PAPER, ${START:,.0f} start)\nPot ${value:,.0f} · floor "
-                f"${floor:,.0f} · holding {len(bets)}\n")
+        head = (f"🎯 <b>Swing Sleeve</b> · PAPER\n\n"
+                f"<b>Pot</b> ${value:,.0f}  <b>Floor</b> ${floor:,.0f}  <b>Holding</b> {len(bets)}\n\n")
         _notify(cfg, head + "\n".join("• " + m for m in msgs))
     print(f"[swing] pot=${value:.0f} floor=${floor:.0f} bets={list(bets)} {msgs}")
 
@@ -191,7 +192,7 @@ def _notify(cfg, text: str) -> None:
 
         async def _s():
             kw = {"message_thread_id": cfg.telegram_topic_id} if cfg.telegram_topic_id else {}
-            await Bot(cfg.telegram_bot_token).send_message(chat_id=cfg.telegram_chat_id, text=text, **kw)
+            await Bot(cfg.telegram_bot_token).send_message(chat_id=cfg.telegram_chat_id, text=text, parse_mode="HTML", **kw)
         asyncio.run(_s())
     except Exception as e:
         print(f"[swing] notify failed: {e}\n{text}")

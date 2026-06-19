@@ -101,7 +101,7 @@ def main() -> None:
             cash += bet_value(r)
             bets.pop(sym)
             emoji = "✅" if ret > 0 else "🔴"
-            msgs.append(f"{emoji} Closed {sym} {ret*100:+.1f}% ({reason}).")
+            msgs.append(f"{emoji} <b>{sym}</b> closed {ret*100:+.1f}% · <i>{reason}</i>")
 
     # ── new entries ───────────────────────────────────────────────────────────
     if len(bets) < MAX_BETS:
@@ -131,16 +131,16 @@ def main() -> None:
                          "entry_price": pos.entry_price, "size_usd": pos.size_usd,
                          "opened_at": pos.opened_at, "id": pos.db_id}
             msgs.append(
-                f"🎰 Entered {sym} ${size:.0f} — breakout + volume surge "
-                f"(ATR {sig['atr_pct']*100:.2f}%)."
+                f"🎰 Entered <b>{sym}</b> ${size:.0f} · breakout + vol surge · "
+                f"ATR {sig['atr_pct']*100:.2f}%"
             )
 
     db.set_state("degen_cash", str(max(0.0, cash)), _now())
     db.record_sleeve_nav("degen", datetime.now(SGT).strftime("%Y-%m-%d"), pot, FLOOR)
 
     if msgs:
-        head = (f"🎰 Degen sleeve (PAPER, ${START:,.0f} start)\n"
-                f"Pot ${pot:,.0f} · floor ${FLOOR:,.0f} · {len(bets)} open\n")
+        head = (f"🎰 <b>Degen Sleeve</b> · PAPER\n\n"
+                f"<b>Pot</b> ${pot:,.0f}  <b>Floor</b> ${FLOOR:,.0f}  <b>Open</b> {len(bets)}\n\n")
         _notify(cfg, head + "\n".join("• " + m for m in msgs))
 
     print(f"[degen] pot=${pot:.0f} floor={FLOOR:.0f} bets={list(bets)} msgs={msgs}")
@@ -164,7 +164,7 @@ def _notify(cfg, text: str) -> None:
         async def _s():
             kw = {"message_thread_id": cfg.telegram_topic_id} if cfg.telegram_topic_id else {}
             await Bot(cfg.telegram_bot_token).send_message(
-                chat_id=cfg.telegram_chat_id, text=text, **kw)
+                chat_id=cfg.telegram_chat_id, text=text, parse_mode="HTML", **kw)
         asyncio.run(_s())
     except Exception as e:
         print(f"[degen] notify failed: {e}\n{text}")
