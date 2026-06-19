@@ -58,21 +58,64 @@ and a **conversational assistant**, all in your Telegram chat.
 - **Never** put an on-chain wallet's private key on a server. Openbook only uses exchange keys that
   can't withdraw.
 
-## Quick start (manual)
+## Choose your path
 
-Prefer your agent to do this (see "The experience"), but by hand:
+**→ AI agent (recommended):** Point Claude Code at this repo and say *"set up Openbook for me."*
+It runs the onboarding interview, recommends sleeves, and walks you through keys step by step.
+
+**→ 24/7 cloud server (production):** Follow [DEPLOYMENT.md](DEPLOYMENT.md) — end-to-end guide
+for a $6/mo DigitalOcean droplet with systemd services, auto-restart, and the full reporting stack.
+Estimated time: ~90 minutes.
+
+**→ Local Mac/laptop (try it first):** Run it on your own machine to test before committing to a
+server. See [Local Setup](#local-setup-mac--laptop) below. Estimated time: ~20 minutes.
+
+---
+
+## Local setup (Mac / laptop)
+
+Good for testing. The bot won't run 24/7 — only while your Mac is on and the terminal is open.
 
 ```bash
 git clone <repo> openbook && cd openbook
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env          # then fill in your keys YOURSELF
-python -m pytest -q           # sanity check
-python -m src.run_trade       # starts in dry-run (paper) by default
+bash setup.sh                 # creates .venv, installs deps, copies .env.example → .env
 ```
 
-You'll need free/cheap keys: **Anthropic** (the brain), **Telegram** (a bot), and, depending on your
-sleeves, **Alpaca** (stocks, paper), **Binance** (crypto data, trade-only), **Exa** (news).
+Then fill in `.env` (minimum to start: `ANTHROPIC_API_KEY` + `TELEGRAM_BOT_TOKEN`), then:
+
+```bash
+bash setup.sh --verify        # runs the test suite to confirm everything wired up
+```
+
+Start the services (each in its own terminal tab):
+```bash
+source .venv/bin/activate
+python -m src.run_telegram    # Telegram bot — listens for your commands
+python -m src.run_trade       # trading loop — runs every 60s in paper mode
+python -m src.run_dashboard   # web dashboard at http://localhost:8080
+```
+
+**What to expect:** within ~30 seconds the bot posts a startup banner to your Telegram group:
+`MODE: DRY-RUN — paper trading active`. Send it `STATUS` and you'll get a live snapshot back.
+The dashboard at `http://localhost:8080` shows equity curves and sleeve cards (empty at first —
+fills in as the loop runs and trades close).
+
+**Keys you need** (all free or cheap):
+
+| Key | Where | Cost | Required? |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | console.anthropic.com | ~$0–2/mo | Yes |
+| `TELEGRAM_BOT_TOKEN` | @BotFather on Telegram | Free | Yes |
+| `ALPACA_API_KEY_ID` | alpaca.markets (paper account) | Free | For stock sleeves |
+| `BINANCE_API_KEY` | binance.com (trade-only key, **withdrawals OFF**) | Free | For crypto sleeve |
+| `EXA_API_KEY` | exa.ai | Free tier | For news + research |
+
+> **Binance key safety:** when creating your Binance API key, enable only *Reading* and
+> *Futures* permissions. **Leave withdrawals OFF.** Restrict the key to your IP address.
+> A leaked key then cannot drain your account. Never use a key with withdrawal permission.
+
+**The capital figures in `.env` (`STARTING_CAPITAL_USD`, `STOCK_SLEEVE_USD`, etc.) are practice
+amounts — simulated paper money. You do not need real funds to start.**
 
 ## How it stays honest
 
