@@ -14,12 +14,22 @@ from __future__ import annotations
 WATCHLIST = [
     # Meme coins — maximum volatility
     "DOGE/USDT", "SHIB/USDT", "PEPE/USDT", "WIF/USDT", "BONK/USDT",
-    # Liquid alts — volatile but with liquidity
-    "SOL/USDT", "AVAX/USDT", "BNB/USDT", "NEAR/USDT", "APT/USDT", "SUI/USDT",
+    "FLOKI/USDT", "JASMY/USDT",
+    # Large caps — most liquid, lower ATR but cleanest signals
+    "BTC/USDT", "ETH/USDT", "BNB/USDT", "XRP/USDT", "SOL/USDT",
+    # L1 alts
+    "ADA/USDT", "AVAX/USDT", "TRX/USDT", "TON/USDT", "DOT/USDT",
+    "NEAR/USDT", "APT/USDT", "SUI/USDT", "SEI/USDT", "TIA/USDT",
+    "ATOM/USDT", "ALGO/USDT", "ICP/USDT", "XLM/USDT", "VET/USDT",
+    # L2 / infrastructure
+    "ARB/USDT", "OP/USDT", "POL/USDT", "STX/USDT",
     # AI / narrative tokens — move fast on news
-    "RENDER/USDT", "FET/USDT", "TAO/USDT",
+    "RENDER/USDT", "FET/USDT", "TAO/USDT", "WLD/USDT", "ONDO/USDT",
+    # DeFi
+    "LINK/USDT", "INJ/USDT", "AAVE/USDT", "UNI/USDT", "GRT/USDT",
+    "JUP/USDT", "ENA/USDT", "PENDLE/USDT",
     # Other high-beta alts
-    "TRX/USDT", "ADA/USDT", "LINK/USDT", "INJ/USDT", "ARB/USDT",
+    "LTC/USDT", "BCH/USDT", "FIL/USDT", "HBAR/USDT", "ETC/USDT",
 ]
 
 MAX_BETS = 5
