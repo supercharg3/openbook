@@ -21,7 +21,20 @@ from .venues import classify_venue
 
 SGT = timezone(timedelta(hours=8))
 MAX_OPEN_BETS = 8
-TAKE_PROFIT, STOP = 0.40, 0.30    # aggressive per-bet exits; the floor is the real backstop
+TAKE_PROFIT = 0.40          # let winners run
+STOP = 0.15                 # hard stop — catalyst plays don't need 30% room
+TIME_STOP_DAYS = 5          # cut if older than this AND return < TIME_STOP_LOSS
+TIME_STOP_LOSS = -0.05      # -5% after 5 days = not working, free the slot
+DEAD_MONEY_DAYS = 10        # cut if older than this AND return < DEAD_MONEY_GAIN
+DEAD_MONEY_GAIN = 0.10      # <+10% after 10 days = opportunity cost too high
+THESIS_ORDER_TTL_HOURS = 48 # queued orders older than this are stale — skip them
+
+# Futures tickers Alpaca can't trade — skip at order time, don't guess a stock match
+FUTURES_BLOCKLIST = {
+    "CL", "GC", "SI", "ES", "NQ", "YM", "RTY", "ZB", "ZN", "ZF", "ZT",
+    "ZC", "ZW", "ZS", "ZM", "ZL", "NG", "HO", "RB", "HG", "PL", "PA",
+    "LE", "GF", "HE", "KC", "CT", "CC", "SB", "OJ", "LBS",
+}
 # Reasoned-aggressive watchlists: liquid, high-beta names the agent forms convictions on.
 STOCK_WATCHLIST = ["NVDA", "AMD", "PLTR", "CRDO", "ARM", "SMCI", "MU", "MRVL", "AVGO", "TSM",
                    "ASML", "COIN", "MSTR", "ANET", "DELL", "AVAV", "RKLB", "IONQ"]
@@ -126,18 +139,36 @@ def main() -> None:
         return
 
     # 2. manage exits
+    now_dt = datetime.now(timezone.utc)
     for t, r in list(bets.items()):
         p = px.get(t, {}).get("px")
         if not p or not r["entry_price"]:
             continue
         ret = p / r["entry_price"] - 1
-        if ret >= TAKE_PROFIT or ret <= -STOP:
-            exec_for(t).close_position(_pos(r), "swing-exit")
+        # Determine exit reason (priority: hard stop > TP > time stop > dead money)
+        exit_reason = None
+        if ret <= -STOP:
+            exit_reason = ("stop", f"🔴 hard stop hit {ret*100:+.0f}%")
+        elif ret >= TAKE_PROFIT:
+            exit_reason = ("take-profit", f"✅ target hit {ret*100:+.0f}%")
+        else:
+            try:
+                opened = datetime.fromisoformat(r["opened_at"].replace("Z", "+00:00"))
+                age_days = (now_dt - opened).total_seconds() / 86400
+                if age_days >= TIME_STOP_DAYS and ret < TIME_STOP_LOSS:
+                    exit_reason = ("time-stop", f"⏱ {age_days:.0f}d old, {ret*100:+.0f}% — not working")
+                elif age_days >= DEAD_MONEY_DAYS and ret < DEAD_MONEY_GAIN:
+                    exit_reason = ("dead-money", f"💤 {age_days:.0f}d old, {ret*100:+.0f}% — opportunity cost")
+            except Exception:
+                pass
+        if exit_reason:
+            reason_tag, msg_sfx = exit_reason
+            exec_for(t).close_position(_pos(r), f"swing-{reason_tag}")
             db.close_trade(r["id"], closed_at=_now(), exit_price=p, pnl_usd=r["size_usd"] * ret,
-                           pnl_pct=ret, fees_usd=0.0, exit_reason="take-profit" if ret > 0 else "stop")
+                           pnl_pct=ret, fees_usd=0.0, exit_reason=reason_tag)
             cash += bet_value(r); bets.pop(t)
-            emoji = "✅" if ret > 0 else "🔴"
-            msgs.append(f"{emoji} <b>{t}</b> sold {ret*100:+.0f}% · {'target hit' if ret > 0 else 'cut the loss'}")
+            from .names import display as _nd
+            msgs.append(f"<b>{_nd(t)}</b> exited · {msg_sfx}")
 
     # 3a. thesis orders from alpha channel signals — process first, they're explicit calls
     import sqlite3
@@ -154,6 +185,27 @@ def main() -> None:
         ticker = order["pair"]
         action = order["action"]   # "buy" (LONG) or "sell" (SHORT)
         side = "long" if action == "buy" else "short"
+
+        # Reject futures tickers — Alpaca can't trade them
+        base = ticker.split("/")[0].upper()
+        if base in FUTURES_BLOCKLIST:
+            with sqlite3.connect(cfg.db_path) as c:
+                c.execute("UPDATE thesis_orders SET status='failed' WHERE id=?", (order["id"],))
+            print(f"[swing] {ticker} is a futures contract — skipped")
+            continue
+
+        # Expire stale signals — alpha calls go cold fast
+        try:
+            created = datetime.fromisoformat(order["created_at"].replace("Z", "+00:00"))
+            age_h = (datetime.now(timezone.utc) - created).total_seconds() / 3600
+            if age_h > THESIS_ORDER_TTL_HOURS:
+                with sqlite3.connect(cfg.db_path) as c:
+                    c.execute("UPDATE thesis_orders SET status='expired' WHERE id=?", (order["id"],))
+                print(f"[swing] {ticker} order expired after {age_h:.0f}h — skipped")
+                continue
+        except Exception:
+            pass
+
         if ticker in bets:
             # already holding — mark done, skip
             with sqlite3.connect(cfg.db_path) as c:
@@ -285,6 +337,25 @@ def run_thesis_now(cfg, db) -> None:
             break
         ticker = order["pair"]
         side = "long" if order["action"] == "buy" else "short"
+
+        base = ticker.split("/")[0].upper()
+        if base in FUTURES_BLOCKLIST:
+            with sqlite3.connect(cfg.db_path) as c:
+                c.execute("UPDATE thesis_orders SET status='failed' WHERE id=?", (order["id"],))
+            print(f"[swing/thesis] {ticker} is a futures contract — skipped")
+            continue
+
+        try:
+            created = datetime.fromisoformat(order["created_at"].replace("Z", "+00:00"))
+            age_h = (datetime.now(timezone.utc) - created).total_seconds() / 3600
+            if age_h > THESIS_ORDER_TTL_HOURS:
+                with sqlite3.connect(cfg.db_path) as c:
+                    c.execute("UPDATE thesis_orders SET status='expired' WHERE id=?", (order["id"],))
+                print(f"[swing/thesis] {ticker} order expired after {age_h:.0f}h — skipped")
+                continue
+        except Exception:
+            pass
+
         if ticker in bets:
             with sqlite3.connect(cfg.db_path) as c:
                 c.execute("UPDATE thesis_orders SET status='skipped' WHERE id=?", (order["id"],))
