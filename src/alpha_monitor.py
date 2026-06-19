@@ -65,58 +65,64 @@ def fetch_messages(channel: str) -> list[dict]:
 
 # ── Signal parsing (Claude Haiku — cheap, fast) ───────────────────────────────
 
-PARSE_PROMPT = """You are extracting trading signals from a Telegram alpha channel.
-This channel is specifically for sharing trade ideas — be liberal about extracting signals.
-Any message with a ticker + a directional lean (bullish/bearish/long/short/buy/sell/trade) counts.
+PARSE_PROMPT = """You are extracting ALL trading signals from a Telegram alpha channel message.
+A single message may contain multiple ticker calls — extract every one.
 
 Message:
 {message}
 
-Respond in this exact format (one line each, no extra text):
-TICKER: <asset ticker uppercase, e.g. DOGE, SOL, NVDA, BTC — or NONE if truly no asset mentioned>
-DIRECTION: <LONG | SHORT | NONE>
+For EACH distinct ticker call, output one SIGNAL block. Confidence guide:
+  HIGH = explicit call ("buy X", "long X", price target given)
+  MEDIUM = directional lean with reasoning ("X breaking out", news implying direction)
+  LOW = ticker mentioned, weak directional view
+
+Format — repeat this block once per ticker:
+SIGNAL
+TICKER: <uppercase ticker, e.g. BTC, NVDA, ETH>
+DIRECTION: <LONG | SHORT>
 CONFIDENCE: <HIGH | MEDIUM | LOW>
-  HIGH = explicit trade call ("buy X", "long X", "short X", price target given)
-  MEDIUM = directional lean with a ticker ("X looking bullish", "X breaking out", news that implies direction)
-  LOW = ticker mentioned but no clear directional view
-CONTEXT: <one sentence: the key reason or catalyst>
+CONTEXT: <one sentence — the key reason or catalyst>
+END
 
-Only output TICKER: NONE if the message has no financial asset at all (pure memes, admin, off-topic)."""
+If the message has no financial asset at all (memes, admin, off-topic), output only: NONE"""
 
 
-def parse_signal(message: str, cfg) -> dict | None:
-    """Use Claude Haiku to extract a structured signal. Returns None only if no asset at all."""
+def parse_signals(message: str, cfg) -> list[dict]:
+    """Use Claude Haiku to extract ALL signals from a message. Returns a list (may be empty)."""
     if not cfg.anthropic_api_key:
-        return None
+        return []
     try:
         from anthropic import Anthropic
         client = Anthropic(api_key=cfg.anthropic_api_key)
         r = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=150,
+            max_tokens=400,
             messages=[{"role": "user", "content": PARSE_PROMPT.format(message=message[:800])}],
         )
         text = r.content[0].text if r.content else ""
-        result = {}
-        for line in text.strip().splitlines():
-            if ":" in line:
-                k, _, v = line.partition(":")
-                result[k.strip().upper()] = v.strip()
-        ticker = result.get("TICKER", "NONE").upper()
-        direction = result.get("DIRECTION", "NONE").upper()
-        confidence = result.get("CONFIDENCE", "LOW").upper()
-        # Drop only if there's genuinely no asset or no direction at all
-        if ticker == "NONE" or direction == "NONE":
-            return None
-        return {
-            "ticker": ticker,
-            "direction": direction,
-            "confidence": confidence,
-            "context": result.get("CONTEXT", ""),
-        }
+        if text.strip().upper() == "NONE":
+            return []
+        signals = []
+        for block in re.split(r'\bSIGNAL\b', text):
+            result = {}
+            for line in block.strip().splitlines():
+                if ":" in line:
+                    k, _, v = line.partition(":")
+                    result[k.strip().upper()] = v.strip()
+            ticker = result.get("TICKER", "NONE").strip().upper()
+            direction = result.get("DIRECTION", "NONE").strip().upper()
+            if ticker == "NONE" or ticker == "" or direction not in ("LONG", "SHORT"):
+                continue
+            signals.append({
+                "ticker": ticker,
+                "direction": direction,
+                "confidence": result.get("CONFIDENCE", "LOW").strip().upper(),
+                "context": result.get("CONTEXT", ""),
+            })
+        return signals
     except Exception as e:
-        print(f"[alpha] parse_signal error: {e}")
-        return None
+        print(f"[alpha] parse_signals error: {e}")
+        return []
 
 
 # ── Routing ───────────────────────────────────────────────────────────────────
@@ -244,12 +250,13 @@ def poll_once(channels: list[str], cfg, db) -> None:
 
         for msg in new_messages:
             print(f"[alpha] @{channel}/{msg['id']}: {msg['text'][:80]}")
-            signal = parse_signal(msg["text"], cfg)
-            if signal:
+            signals = parse_signals(msg["text"], cfg)
+            print(f"[alpha]   → {len(signals)} signal(s) found")
+            for signal in signals:
                 ticker = signal["ticker"]
                 verdict = research_alpha(ticker, signal["direction"], signal["context"], cfg)
                 action = route_signal(ticker, verdict, signal["direction"], signal["confidence"], signal["context"], db)
-                dir_emoji = "🟢" if signal["direction"] == "LONG" else "🔴" if signal["direction"] == "SHORT" else "⚪"
+                dir_emoji = "🟢" if signal["direction"] == "LONG" else "🔴"
                 header = (
                     f"📡 <b>Alpha Signal</b> · @{channel}\n\n"
                     f"{dir_emoji} <b>{ticker}</b> · {signal['direction']} · {signal['confidence'].lower()} confidence\n"
