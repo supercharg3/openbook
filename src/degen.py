@@ -38,8 +38,8 @@ TAKE_PROFIT = 0.25        # close at +25%
 STOP_LOSS = 0.15          # cut at -15%
 REVERSAL_BARS = 10        # also close if price falls below 10-bar low (trend gone)
 MIN_ATR_PCT = 0.003       # skip coins with <0.3% ATR — not volatile enough to bother
-VOLUME_MULT = 2.0         # entry volume must be >2x the 20-bar average
-LOOKBACK = 20             # bars for breakout high + average volume
+VOLUME_MULT = 1.5         # entry volume must be >1.5x the 20-bar average (was 2.0 — too strict)
+LOOKBACK = 15             # bars for breakout high + average volume (was 20 — react faster)
 TIMEFRAME = "15m"
 
 
