@@ -68,9 +68,6 @@ class Config:
     telegram_chat_id: str | None = field(default_factory=lambda: _get("TELEGRAM_CHAT_ID"))
     # Forum-topic id (message_thread_id) the bot is scoped to. Blank = no topic / discovery mode.
     telegram_topic_id: int | None = field(default_factory=lambda: _get_int_or_none("TELEGRAM_TOPIC_ID"))
-    # Telegram user account (for alpha channel monitor via telethon — different from bot token)
-    telegram_api_id: str | None = field(default_factory=lambda: _get("TELEGRAM_API_ID"))
-    telegram_api_hash: str | None = field(default_factory=lambda: _get("TELEGRAM_API_HASH"))
 
     # Trading mode + capital
     trading_mode: str = field(default_factory=lambda: _get("TRADING_MODE", "dry-run"))
@@ -98,9 +95,8 @@ class Config:
     degen_budget_usd: float = field(default_factory=lambda: _get_float("DEGEN_BUDGET_USD", 300.0))
     # Floor as a fraction of degen_budget_usd (default 0.30 → halt at 70% of budget).
     degen_floor_pct: float = field(default_factory=lambda: _get_float("DEGEN_FLOOR_PCT", 0.30))
-    # Alpha channel monitor: comma-separated Telegram channel usernames to watch.
+    # Alpha channel monitor: comma-separated public Telegram channel usernames to watch.
     alpha_channels: str | None = field(default_factory=lambda: _get("ALPHA_CHANNELS"))
-    alpha_session_file: str | None = field(default_factory=lambda: _get("ALPHA_SESSION_FILE"))
 
     # Paths / scheduling
     db_path: str = field(default_factory=lambda: _get("DB_PATH", "./data/trading.db"))

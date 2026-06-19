@@ -1,14 +1,13 @@
 """Entry point for the alpha channel monitor service.
 
-Runs as a long-lived systemd service (not a timer). Stays connected to Telegram
-and processes incoming messages from configured alpha channels in real time.
+Polls configured public Telegram channels every 5 minutes.
+No Telegram account or credentials needed — reads the public t.me/s/ web page.
 """
 from __future__ import annotations
 
-import asyncio
 from .config import get_config
 from .database import Database
-from .alpha_monitor import monitor
+from .alpha_monitor import run_loop
 
 
 def main() -> None:
@@ -22,7 +21,7 @@ def main() -> None:
     channels = [c.strip().lstrip("@") for c in cfg.alpha_channels.split(",") if c.strip()]
     print(f"[alpha] starting monitor for: {channels}")
 
-    asyncio.run(monitor(cfg, db, channels))
+    run_loop(channels, cfg, db)
 
 
 if __name__ == "__main__":
