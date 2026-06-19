@@ -52,7 +52,7 @@ def _swing_status_lines(db, swing_rows, cfg, is_live: bool = False) -> list[str]
                                group_by="ticker", auto_adjust=True, threads=True)
             for t in tickers:
                 try:
-                    prices[t] = float((data[t] if len(tickers) > 1 else data)["Close"].dropna().iloc[-1])
+                    prices[t] = float((data[t] if len(tickers) > 1 else data)["Close"].dropna().values[-1])
                 except Exception:
                     pass
         except Exception:
@@ -126,7 +126,7 @@ def _stock_status_lines(db, stock_rows) -> list[str]:
         for t in set(want):
             try:
                 df = data[t] if len(want) > 1 else data
-                prices[t] = float(df["Close"].dropna().iloc[-1])
+                prices[t] = float(df["Close"].dropna().values[-1])
             except Exception:
                 pass
     except Exception:
