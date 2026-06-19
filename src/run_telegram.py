@@ -74,11 +74,18 @@ def _swing_status_lines(db, swing_rows, cfg, is_live: bool = False) -> list[str]
     halted = db.get_state("swing_halted") == "1"
     mode = "LIVE — real money" if is_live else "Practice Money"
     halted_sfx = " · ⛔ HALTED" if halted else ""
-    return ["", "🎯 <b>SWING — agentic conviction</b>",
-            f"<b>Capital:</b> ${total:,.0f}  [{mode}{halted_sfx}]",
-            f"<b>Returns:</b> {_sd(total - cfg.swing_budget_usd)} since start",
-            f"<b>Floor:</b> ${floor:,.0f} (auto-halts here)",
-            "<b>Positions:</b>"] + (pos or ["  • none open"])
+    lines = ["", "🎯 <b>SWING — agentic conviction</b>",
+             f"<b>Capital:</b> ${total:,.0f}  [{mode}{halted_sfx}]",
+             f"<b>Returns:</b> {_sd(total - cfg.swing_budget_usd)} since start",
+             f"<b>Floor:</b> ${floor:,.0f} (auto-halts here)",
+             "<b>Positions:</b>"] + (pos or ["  • none open"])
+    watches = [dict(w) for w in db.active_watches() if w["sleeve"] == "swing"]
+    if watches:
+        lines.append("<b>Watching for entry:</b>")
+        for w in watches:
+            cond = "dips to" if w["condition"] == "lte" else "rallies to"
+            lines.append(f"  • {_esc(w['ticker'])} {w['direction']} — enter when {cond} ${w['target_price']:,.4g}")
+    return lines
 
 
 def _degen_status_lines(db, degen_rows, cfg, price_feed, is_live: bool = False) -> list[str]:

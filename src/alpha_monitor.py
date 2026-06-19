@@ -161,8 +161,8 @@ def route_signal(ticker: str, verdict: str, direction: str, confidence: str, con
             expires = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
             # For longs: buy when price dips to target (lte). For shorts: buy when price rises to target (gte).
             condition = "lte" if direction == "LONG" else "gte"
-            # Normalise ticker to exchange format for crypto
-            watch_ticker = ticker if "/" in ticker else f"{ticker}/USDT"
+            # Stocks: keep bare ticker. Crypto: normalise to TICKER/USDT for Binance.
+            watch_ticker = ticker if (venue == "stock" or "/" in ticker) else f"{ticker}/USDT"
             db.add_price_watch(watch_ticker, direction, target, condition, sleeve, context, now, expires)
             return f"👀 watching for entry near ${target:,.4g} (expires 7d) — will auto-enter when price arrives"
         else:
@@ -243,6 +243,70 @@ def research_alpha(subject: str, direction: str, context: str, cfg) -> str:
         return f"Research failed ({type(e).__name__})."
 
 
+# ── Swing price-watch monitor (runs every poll cycle) ────────────────────────
+
+def check_swing_watches(cfg, db) -> None:
+    """Check stock price watches; execute when target is hit. Runs every 5-min poll cycle."""
+    watches = [dict(w) for w in db.active_watches() if w["sleeve"] == "swing"]
+    if not watches:
+        return
+
+    tickers = list({w["ticker"].split("/")[0] for w in watches})
+    prices = {}
+    try:
+        import yfinance as yf
+        data = yf.download(tickers, period="1d", interval="5m", progress=False,
+                           group_by="ticker", auto_adjust=True, threads=True)
+        for t in tickers:
+            try:
+                if len(tickers) == 1:
+                    prices[t] = float(data["Close"].dropna().values[-1])
+                else:
+                    prices[t] = float(data[t]["Close"].dropna().values[-1])
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[alpha] swing watch yfinance error: {e}")
+        return
+
+    import sqlite3
+    for w in watches:
+        base = w["ticker"].split("/")[0]
+        px = prices.get(base)
+        if not px:
+            continue
+        target = float(w["target_price"])
+        condition = w["condition"]
+        triggered = (condition == "lte" and px <= target) or (condition == "gte" and px >= target)
+        if not triggered:
+            continue
+
+        direction = w["direction"]
+        print(f"[alpha] swing watch triggered: {base} {direction} @ ${px:.2f} (target ${target})")
+        now = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(db.db_path) as conn:
+            conn.execute(
+                "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status) VALUES (?,?,?,?,?)",
+                (now, "buy" if direction == "LONG" else "sell", base, 5.0, "pending"),
+            )
+        try:
+            from .run_swing import run_thesis_now
+            run_thesis_now(cfg, db)
+        except Exception as e:
+            print(f"[alpha] swing watch exec failed: {e}")
+        # Expire the watch so it can't re-trigger
+        with sqlite3.connect(db.db_path) as conn:
+            conn.execute("UPDATE price_watches SET expires_at=? WHERE ticker=?", (now, w["ticker"]))
+        cond_str = "dipped to" if condition == "lte" else "rallied to"
+        from .names import display as _display
+        name = _display(base)
+        _notify(cfg, (
+            f"🎯 <b>Price Watch Hit</b>\n"
+            f"<b>{name}</b> {direction} {cond_str} ${px:,.2f} (target ${target:,.4g})\n"
+            f"Entering via swing sleeve."
+        ))
+
+
 # ── Main poll loop ────────────────────────────────────────────────────────────
 
 def poll_once(channels: list[str], cfg, db) -> None:
@@ -289,6 +353,10 @@ def run_loop(channels: list[str], cfg, db, interval: int = 300) -> None:
             poll_once(channels, cfg, db)
         except Exception as e:
             print(f"[alpha] poll error: {e}")
+        try:
+            check_swing_watches(cfg, db)
+        except Exception as e:
+            print(f"[alpha] swing watch check error: {e}")
         time.sleep(interval)
 
 
