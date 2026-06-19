@@ -57,7 +57,7 @@ def _swing_status_lines(db, swing_rows, cfg, is_live: bool = False) -> list[str]
                     pass
         except Exception:
             pass
-    cash = float(db.get_state("swing_cash") or 1000.0)
+    cash = float(db.get_state("swing_cash") or cfg.swing_budget_usd)
     total = cash
     pos = []
     for r in swing_rows:
@@ -72,12 +72,13 @@ def _swing_status_lines(db, swing_rows, cfg, is_live: bool = False) -> list[str]
     from .swing import floor_value
     floor = floor_value(cfg.swing_budget_usd, cfg.swing_floor_usd, hwm)
     halted = db.get_state("swing_halted") == "1"
-    mode_tag = "LIVE" if is_live else "Paper"
-    state = "⛔ HALTED (hit floor)" if halted else f"running · {mode_tag}"
-    return ["", "🎯 <b>SWING — agentic conviction</b> (aggressive)",
-            f"<b>Pot:</b> ${total:,.0f}  [{state}]",
-            f"<b>Floor:</b> ${floor:,.0f} (auto-halts here · started ${cfg.swing_budget_usd:,.0f})",
-            "<b>Bets:</b>"] + (pos or ["  • none open"])
+    mode = "LIVE — real money" if is_live else "Practice Money"
+    halted_sfx = " · ⛔ HALTED" if halted else ""
+    return ["", "🎯 <b>SWING — agentic conviction</b>",
+            f"<b>Capital:</b> ${total:,.0f}  [{mode}{halted_sfx}]",
+            f"<b>Returns:</b> {_sd(total - cfg.swing_budget_usd)} since start",
+            f"<b>Floor:</b> ${floor:,.0f} (auto-halts here)",
+            "<b>Positions:</b>"] + (pos or ["  • none open"])
 
 
 def _degen_status_lines(db, degen_rows, cfg, price_feed, is_live: bool = False) -> list[str]:
@@ -93,11 +94,12 @@ def _degen_status_lines(db, degen_rows, cfg, price_feed, is_live: bool = False) 
         pos_lines.append(f"  • {_esc(display(r['pair']))} — ${val:,.0f} "
                          f"{'🟢' if u >= 0 else '🔴'} {_sd(u)}")
     halted = db.get_state("degen_halted") == "1"
-    mode_tag = "LIVE" if is_live else "Paper"
-    state = "⛔ HALTED" if halted else f"running · 15-min cycle · {mode_tag}"
-    lines = ["", "🎰 <b>DEGEN — active crypto momentum</b>",
-             f"<b>Pot:</b> ${total:,.0f}  [{state}]",
-             f"<b>Floor:</b> ${cfg.degen_floor_usd:,.0f} (auto-halts here · started ${cfg.degen_budget_usd:,.0f})",
+    mode = "LIVE — real money" if is_live else "Practice Money"
+    halted_sfx = " · ⛔ HALTED" if halted else ""
+    lines = ["", "🎰 <b>DEGEN — active crypto momentum</b>  · 15-min cycle",
+             f"<b>Capital:</b> ${total:,.0f}  [{mode}{halted_sfx}]",
+             f"<b>Returns:</b> {_sd(total - cfg.degen_budget_usd)} since start",
+             f"<b>Floor:</b> ${cfg.degen_floor_usd:,.0f} (auto-halts here)",
              "<b>Positions:</b>"] + (pos_lines or ["  • none open"])
     # Price watches — pending WAIT signals
     watches = [dict(w) for w in db.active_watches() if w["sleeve"] == "degen"]
