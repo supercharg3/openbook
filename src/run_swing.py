@@ -139,7 +139,50 @@ def main() -> None:
             emoji = "✅" if ret > 0 else "🔴"
             msgs.append(f"{emoji} <b>{t}</b> sold {ret*100:+.0f}% · {'target hit' if ret > 0 else 'cut the loss'}")
 
-    # 3. one new reasoned bet across BOTH stocks and crypto, if there's room
+    # 3a. thesis orders from alpha channel signals — process first, they're explicit calls
+    import sqlite3
+    raw_conn = sqlite3.connect(cfg.db_path)
+    raw_conn.row_factory = sqlite3.Row
+    pending = raw_conn.execute(
+        "SELECT * FROM thesis_orders WHERE status='pending' ORDER BY created_at"
+    ).fetchall()
+    raw_conn.close()
+
+    for order in pending:
+        if len(bets) >= MAX_OPEN_BETS or risk_budget(value, floor) < 50:
+            break
+        ticker = order["pair"]
+        action = order["action"]   # "buy" (LONG) or "sell" (SHORT)
+        side = "long" if action == "buy" else "short"
+        if ticker in bets:
+            # already holding — mark done, skip
+            with sqlite3.connect(cfg.db_path) as c:
+                c.execute("UPDATE thesis_orders SET status='skipped' WHERE id=?", (order["id"],))
+            continue
+        # fetch price if not already in px
+        venue = classify_venue(ticker.split("/")[0])
+        if ticker not in px:
+            if venue == "stock":
+                px.update(_stock_prices([ticker]))
+            else:
+                px.update(_crypto_prices([ticker], ex))
+        if ticker not in px:
+            continue  # can't price it, leave pending for next cycle
+        size = round(min(order["size_pct"] / 100 * value, size_bet(value, floor)), 2)
+        if cash < size:
+            break
+        pos = exec_for(ticker).open_position(ticker, side, size, 1.0, "swing")
+        pos.db_id = db.open_trade(_rec(pos, cfg))
+        cash -= pos.size_usd
+        bets[ticker] = {"pair": ticker, "side": side, "strategy": "swing",
+                        "entry_price": pos.entry_price, "size_usd": pos.size_usd,
+                        "opened_at": pos.opened_at, "id": pos.db_id}
+        with sqlite3.connect(cfg.db_path) as c:
+            c.execute("UPDATE thesis_orders SET status='executed' WHERE id=?", (order["id"],))
+        from .names import display as _display
+        msgs.append(f"📡 <b>{_display(ticker)}</b> ${size:.0f} · alpha signal · {side}")
+
+    # 3b. one new reasoned bet from watchlist if there's still room
     if len(bets) < MAX_OPEN_BETS and risk_budget(value, floor) >= 50:
         candidates = [t for t in (STOCK_WATCHLIST + CRYPTO_WATCHLIST) if t not in bets and t in px]
         candidates.sort(key=lambda t: px[t]["mom"], reverse=True)      # rank by momentum, research the top
