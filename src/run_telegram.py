@@ -269,6 +269,14 @@ def main() -> None:
                     "the book is flat (no open pairs), no restart needed.")
         return "No proposed basket to approve (run a re-screen first)."
 
+    def run_swing_now() -> str:
+        try:
+            from .run_swing import run_thesis_now
+            run_thesis_now(cfg, db)
+            return "✅ Swing sleeve ran — any pending thesis orders processed, exits checked."
+        except Exception as e:
+            return f"⚠️ Swing run failed: {e}"
+
     tg = TelegramInterface(
         bot_token=cfg.telegram_bot_token,
         chat_id=cfg.telegram_chat_id,
@@ -278,6 +286,7 @@ def main() -> None:
         topic_id=cfg.telegram_topic_id,
         assistant_provider=assistant_provider,
         basket_approve=basket_approve,
+        run_swing=run_swing_now,
     )
 
     # Note: the startup MODE banner is sent by the trading-loop service (run_trade), not here,

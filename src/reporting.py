@@ -18,6 +18,7 @@ class Command(str, Enum):
     REDUCE_RISK = "REDUCE RISK"
     REPORT = "REPORT"
     APPROVE_BASKET = "APPROVE BASKET"
+    RUN_SWING = "RUN SWING"
     UNKNOWN = "UNKNOWN"
 
 
@@ -31,6 +32,7 @@ class ParsedCommand:
 # (e.g. "REDUCE RISK" before nothing, "CLOSE ALL" before a hypothetical "CLOSE").
 _COMMAND_PATTERNS = [
     ("APPROVE BASKET", Command.APPROVE_BASKET),
+    ("RUN SWING", Command.RUN_SWING),
     ("CLOSE ALL", Command.CLOSE_ALL),
     ("REDUCE RISK", Command.REDUCE_RISK),
     ("STOP", Command.STOP),
