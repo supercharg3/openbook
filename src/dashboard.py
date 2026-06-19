@@ -20,7 +20,6 @@ _HTML = """<!DOCTYPE html>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Openbook — trading dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
   :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;
         --green:#3fb950;--red:#f85149;--yellow:#d29922;--blue:#388bfd;--accent:#1f6feb}
@@ -88,6 +87,7 @@ _HTML = """<!DOCTYPE html>
 
 <p class="refresh-note">Auto-refreshes every 30s &nbsp;·&nbsp; last updated: <span id="ts">—</span></p>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 let eqChart = null, stockChart = null;
 
