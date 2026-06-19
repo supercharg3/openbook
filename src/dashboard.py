@@ -58,9 +58,10 @@ _HTML = """<!DOCTYPE html>
                 margin-bottom:20px;color:#6cb6ff;font-size:12px}
 </style>
 </head>
-<body>
+<body style="background:#0d1117;color:#e6edf3">
 <h1>Openbook</h1>
 <p class="subtitle" id="mode-line">loading…</p>
+<div id="error-banner" style="display:none;background:#3d1f1f;border:1px solid #f85149;border-radius:6px;padding:10px 14px;margin-bottom:16px;color:#f85149;font-size:12px"></div>
 <div id="paper-banner" class="paper-banner" style="display:none">
   Practice Money mode — no real money at risk. Everything here is simulated.
 </div>
@@ -98,13 +99,23 @@ function fmt(x){
 function pct(end,start){
   if(!start) return '—';
   const p = (end-start)/start*100;
-  return (p>=0?'+':'')+p.toFixed(1)+'%';
+  const decimals = Math.abs(p) < 1 ? 2 : 1;
+  return (p>=0?'+':'')+p.toFixed(decimals)+'%';
 }
 function colorClass(x){ return x >= 0 ? 'pos' : 'neg'; }
 
 async function refresh(){
   let data;
-  try{ data = await (await fetch('/api/data')).json(); } catch(e){ return; }
+  try{
+    const resp = await fetch('/api/data');
+    if(!resp.ok) throw new Error('HTTP ' + resp.status);
+    data = await resp.json();
+    document.getElementById('error-banner').style.display = 'none';
+  } catch(e){
+    document.getElementById('error-banner').style.display = 'block';
+    document.getElementById('error-banner').textContent = 'Failed to load data: ' + e.message;
+    return;
+  }
 
   // Mode line
   const isLive = data.mode === 'live';
