@@ -102,10 +102,12 @@ ids to paste in. So nothing more to collect here.
 
 5a. **Copy the project up** (from your Mac, simplest method — rsync over SSH):
    ```bash
-   rsync -avz --exclude '.venv' --exclude 'data' --exclude '__pycache__' \
+   rsync -az --filter=':- .rsyncignore' \
      ~/openbook/ root@<your-vps-ip>:/root/ai-trading-system/
    ```
-   (Re-run this same command anytime you change code locally and want to update the droplet.)
+   The `.rsyncignore` file already excludes `.venv/`, `data/`, `.env`, and `__pycache__` —
+   never overwrite the server's venv with your local one (different Python paths).
+   Re-run this command anytime you update code locally.
 
 5b. **Run the VPS setup script** (as root — it creates the `trader` user and installs everything): ☁️
    ```bash
@@ -162,6 +164,26 @@ systemctl restart ssh
    ```
 4. Now you should get **`MODE: DRY-RUN — paper trading active`** posted into the Trading topic.
    Send `STATUS` and `REPORT` — replies should land in that topic only.
+
+---
+
+## Phase 7b — Optional: degen sleeve + alpha channel monitor ☁️
+
+**Degen sleeve** (hyper-active crypto momentum, 15-min cycle) is enabled by default if you have Binance keys. Nothing extra to configure.
+
+**Alpha channel monitor** watches public Telegram channels for trade signals, runs a bear/bull research panel on each, and auto-routes to the right sleeve. To enable:
+
+1. Add to `.env`:
+   ```
+   ALPHA_CHANNELS=paste_trade        # comma-separated public channel usernames
+   ```
+2. Enable the service:
+   ```bash
+   sudo cp /home/trader/ai-trading-system/deploy/trading-alpha.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now trading-alpha.service
+   ```
+No Telegram login required — reads the public `t.me/s/{channel}` web page every 5 minutes. WAIT verdicts set a price watch that auto-enters when the price arrives (within 7 days).
 
 ---
 

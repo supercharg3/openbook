@@ -25,12 +25,12 @@ separately (think *separate envelopes in one account*). You pick which ones fit 
 
 | Sleeve | What it is | Vibe |
 |---|---|---|
-| **Market-Neutral (crypto)** | Out-of-sample-validated pairs trading, bets on two coins' spread reverting, market-direction-neutral | Safe, slow, the compounder |
+| **Pairs (crypto)** | Out-of-sample-validated stat-arb — bets two correlated coins' spread will revert, market-direction-neutral | Safe, slow, the compounder |
 | **Factor (stocks)** | Ranks stocks by momentum + quality, holds the best, benchmarked vs the right index | Steady, rules-based |
-| **Swing (agentic)** | The AI researches high-conviction stock/crypto bets, capped per bet, with a hard floor + profit-lock + circuit breaker | Aggressive, transparent, high-variance |
+| **Swing (agentic)** | AI researches high-conviction stock/crypto bets once daily; hard floor + profit-lock + circuit breaker | Aggressive, one decision/day |
+| **Degen (active crypto)** | Technical momentum signals — breakout + volume surge — on 20 volatile coins, fires every 15 minutes | Highest variance, most active |
 
-Plus a **research tool** (`look into NVDA` → an honest bull/bear/risk verdict), an **idea scanner**,
-and a **conversational assistant**, all in your Telegram chat.
+Plus an **alpha channel monitor** (watches public Telegram channels, runs bear/bull research on every signal, routes to the right sleeve automatically — WAIT signals set a price watch and auto-enter when the price arrives), a **research tool** (`look into NVDA`), and a **conversational assistant**, all in your Telegram chat.
 
 ## The experience
 

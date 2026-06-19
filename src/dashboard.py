@@ -335,9 +335,32 @@ def _load_data(db_path: str, cfg) -> dict:
     from .swing import floor_value
     swing_floor = floor_value(cfg.swing_budget_usd, cfg.swing_floor_usd, swing_hwm)
     swing_positions = list(conn.execute(
-        "SELECT size_usd FROM trades WHERE strategy='swing' AND closed_at IS NULL"
+        "SELECT pair, entry_price, size_usd FROM trades WHERE strategy='swing' AND closed_at IS NULL"
     ))
-    swing_pos_total = sum(r["size_usd"] for r in swing_positions)
+    # Mark open positions to market using live prices (yfinance, best-effort)
+    swing_pos_total = 0.0
+    if swing_positions:
+        try:
+            import yfinance as yf
+            tickers = list({dict(r)["pair"] for r in swing_positions})
+            prices = {}
+            data = yf.download(tickers, period="1d", progress=False, auto_adjust=True)
+            for t in tickers:
+                try:
+                    col = data["Close"] if len(tickers) > 1 else data["Close"]
+                    px = float((col[t] if len(tickers) > 1 else col).dropna().iloc[-1])
+                    prices[t] = px
+                except Exception:
+                    pass
+            for r in swing_positions:
+                row = dict(r)
+                px = prices.get(row["pair"])
+                if px and row["entry_price"]:
+                    swing_pos_total += row["size_usd"] * (px / row["entry_price"])
+                else:
+                    swing_pos_total += row["size_usd"]
+        except Exception:
+            swing_pos_total = sum(dict(r)["size_usd"] for r in swing_positions)
     swing_total = swing_cash + swing_pos_total
     if swing_hwm > 0 or swing_cash != cfg.swing_budget_usd:
         sleeves.append({
