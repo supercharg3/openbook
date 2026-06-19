@@ -203,6 +203,51 @@ journalctl -u trading-loop -f            # live logs
 sudo systemctl restart trading-loop      # restart after a code update
 ```
 
+## Accessing the dashboard
+
+The dashboard runs on port 8080, private by default (`DASHBOARD_PUBLIC=0`). Three ways to reach it:
+
+### Option A — Tailscale (recommended, no domain needed)
+Tailscale creates a private network between your devices. No open ports, no passwords, works from your phone too.
+
+1. **On the droplet:**
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   tailscale up
+   ```
+   Open the link it prints and sign in at tailscale.com.
+
+2. **On your Mac/phone:** download from tailscale.com/download, sign in with the same account.
+
+3. **Get the droplet's Tailscale IP:**
+   ```bash
+   tailscale ip -4   # e.g. 100.x.x.x
+   ```
+
+4. Open `http://100.x.x.x:8080` in your browser. Bookmark it. Done.
+
+### Option B — Cloudflare Tunnel (best if you have a domain)
+Gives you a real `https://dashboard.yourdomain.com` URL, HTTPS included, protected behind Cloudflare Access (Google login). Free. Requires a domain pointed at Cloudflare.
+
+```bash
+# On the droplet:
+curl -L https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
+sudo apt update && sudo apt install cloudflared -y
+cloudflared tunnel login
+cloudflared tunnel create openbook
+cloudflared tunnel route dns openbook dashboard.yourdomain.com
+cloudflared tunnel run --url http://localhost:8080 openbook
+```
+
+### Option C — SSH tunnel (no installs, one-off access)
+```bash
+ssh -L 8080:localhost:8080 root@<your-vps-ip> -N
+```
+Then open `http://localhost:8080`. Close the terminal to disconnect.
+
+---
+
 ## Going live later (DO NOT do this until the gate clears)
 1. Set `TRADING_MODE=live` and `ALLOW_LIVE_ORDERS=1` in `.env`
 2. Fund $500 USDT into the Binance **Futures** wallet
