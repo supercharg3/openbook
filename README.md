@@ -60,15 +60,17 @@ and a **conversational assistant**, all in your Telegram chat.
 
 ## Choose your path
 
-**→ AI agent (recommended):** Point Claude Code at this repo and say *"set up Openbook for me."*
-It runs the onboarding interview, recommends sleeves, and walks you through keys step by step.
+**Do you have [Claude Code](https://claude.ai/code)?**
+→ Point it at this repo and say *"set up Openbook for me."* It runs the full onboarding interview,
+recommends sleeves for your risk profile, and walks you through keys step by step. Easiest path.
 
-**→ 24/7 cloud server (production):** Follow [DEPLOYMENT.md](DEPLOYMENT.md) — end-to-end guide
-for a $6/mo DigitalOcean droplet with systemd services, auto-restart, and the full reporting stack.
-Estimated time: ~90 minutes.
+**No Claude Code, want to try it first?**
+→ [Local setup](#local-setup-mac--laptop) below — runs on your Mac in ~20 minutes. Good for
+testing before committing to a server.
 
-**→ Local Mac/laptop (try it first):** Run it on your own machine to test before committing to a
-server. See [Local Setup](#local-setup-mac--laptop) below. Estimated time: ~20 minutes.
+**Want it running 24/7?**
+→ [DEPLOYMENT.md](DEPLOYMENT.md) — end-to-end guide for a $6/mo cloud server with auto-restart
+and the full reporting stack. ~90 minutes.
 
 ---
 
@@ -87,13 +89,12 @@ Then fill in `.env` (minimum to start: `ANTHROPIC_API_KEY` + `TELEGRAM_BOT_TOKEN
 bash setup.sh --verify        # runs the test suite to confirm everything wired up
 ```
 
-Start the services (each in its own terminal tab):
+Start all services with one command:
 ```bash
-source .venv/bin/activate
-python -m src.run_telegram    # Telegram bot — listens for your commands
-python -m src.run_trade       # trading loop — runs every 60s in paper mode
-python -m src.run_dashboard   # web dashboard at http://localhost:8080
+bash start.sh
 ```
+This activates the venv and starts the Telegram bot, trading loop, and dashboard together.
+Ctrl+C stops everything cleanly.
 
 **What to expect:** within ~30 seconds the bot posts a startup banner to your Telegram group:
 `MODE: DRY-RUN — paper trading active`. Send it `STATUS` and you'll get a live snapshot back.
