@@ -103,23 +103,26 @@ ids to paste in. So nothing more to collect here.
 5a. **Copy the project up** (from your Mac, simplest method — rsync over SSH):
    ```bash
    rsync -avz --exclude '.venv' --exclude 'data' --exclude '__pycache__' \
-     ~/openbook/ root@<your-vps-ip>:/root/openbook/
+     ~/openbook/ root@<your-vps-ip>:/root/ai-trading-system/
    ```
    (Re-run this same command anytime you change code locally and want to update the droplet.)
 
-5b. **Create a non-root user** to run the bot (the systemd units expect user `trader`): ☁️
+5b. **Run the VPS setup script** (as root — it creates the `trader` user and installs everything): ☁️
    ```bash
    ssh root@203.0.113.45
-   adduser --disabled-password --gecos "" trader
-   cp -r /root/ai-trading-system /home/trader/ai-trading-system
-   chown -R trader:trader /home/trader/ai-trading-system
+   cd /root/ai-trading-system
+   bash deploy/setup_vps.sh
    ```
+   This creates the `trader` user, copies the project to `/home/trader/ai-trading-system`, installs
+   Python deps, configures the firewall, and registers all systemd services.
 
 ---
 
 ## Phase 6 — Configure secrets (5 min) ☁️
 
-On the droplet:
+All steps below run **as root** on the droplet (the `setup_vps.sh` script runs as root).
+The `.env` file lives in `/home/trader/ai-trading-system/` — set up by the script.
+
 ```bash
 cd /home/trader/ai-trading-system
 cp .env.example .env
@@ -136,63 +139,41 @@ chown trader:trader .env
 
 ---
 
-## Phase 7 — Run setup + go live in PAPER mode (10 min) ☁️
+## Phase 7 — Start services + verify (10 min) ☁️
 
+The `setup_vps.sh` script already enabled and started everything. Verify it's running:
 ```bash
-cd /home/trader/ai-trading-system
-sudo bash deploy/setup_vps.sh
-```
-This installs Python deps, the firewall, fail2ban, the SQLite DB, and the three systemd services
-(trading loop, Telegram listener, 8am report).
-
-Then **harden SSH** (the script reminds you):
-```bash
-sudo nano /etc/ssh/sshd_config      # set:  PasswordAuthentication no
-sudo systemctl restart ssh
+systemctl status trading-loop trading-telegram trading-dashboard
 ```
 
-Start Freqtrade (the technical-strategy engine) in dry-run:
+Then **harden SSH**:
 ```bash
-cd /home/trader/ai-trading-system/freqtrade && docker compose up -d
+nano /etc/ssh/sshd_config      # set:  PasswordAuthentication no
+systemctl restart ssh
 ```
 
-✅ **Verification + grab the two ids:**
+✅ **Grab the two Telegram ids:**
 1. In the **Trading topic**, send the bot any message (e.g. `STATUS`).
 2. It replies with a 📌 note containing **this chat's id** (a negative number) and **this topic's id**.
 3. Put them into `.env`:
    ```bash
-   nano .env      # set TELEGRAM_CHAT_ID=-100...  and  TELEGRAM_TOPIC_ID=<topic id>
-   sudo systemctl restart trading-loop trading-telegram
+   nano /home/trader/ai-trading-system/.env   # set TELEGRAM_CHAT_ID=-100...  and  TELEGRAM_TOPIC_ID=<topic id>
+   systemctl restart trading-loop trading-telegram
    ```
-4. Now you should get **`MODE: DRY-RUN — paper trading active`** posted *into the Trading topic*.
-   Send `STATUS` and `REPORT` — replies should land in that topic only. The whole pipeline is
-   live (on fake money), scoped to your Trading topic.
+4. Now you should get **`MODE: DRY-RUN — paper trading active`** posted into the Trading topic.
+   Send `STATUS` and `REPORT` — replies should land in that topic only.
 
 ---
 
-## Phase 8 — Backtest the strategies (15 min) ☁️
+## Phase 8 — Add monitoring + let it run (5 min, then wait) 🌐
 
-Keep only strategies that pass the gate (Sharpe > 1.5, drawdown < 15%):
-```bash
-cd /home/trader/ai-trading-system/freqtrade
-docker compose run --rm freqtrade download-data --days 200 -t 15m
-docker compose run --rm freqtrade backtesting --strategy RsiTrendStrategy --timerange 20251201-
-docker compose run --rm freqtrade backtesting --strategy EmaCrossStrategy --timerange 20251201-
-docker compose run --rm freqtrade backtesting --strategy BreakoutStrategy --timerange 20251201-
-```
-Note the Sharpe + max drawdown for each. Disable any that fail (tell me the numbers and I'll
-adjust the config to run only the winners).
-
----
-
-## Phase 9 — Add monitoring + let it run (5 min, then wait) 🌐
-
-9a. **UptimeRobot** (free): uptimerobot.com → add monitor → type "Ping", host = your droplet IP →
+8a. **UptimeRobot** (free): uptimerobot.com → add monitor → type "Ping", host = your droplet IP →
     alert contact = (optional) email/Telegram. Tells you if the droplet ever goes down.
 
-9b. **Let paper trading run.** Read the 8am report daily. The gate to go live with real $500:
-    ≥30 trades, positive expectancy, Sharpe > 1.2, max drawdown < 15%, profit factor > 1.3,
-    overrides confirmed working, ≥14 days. When it clears, we flip `TRADING_MODE=live` together.
+8b. **Let paper trading run.** Read the 8am report daily. The gate to go live with real $500:
+    ≥10 complete pair rounds across ≥4 distinct pairs, ≥3 daily reports received, system alive
+    (no stale loop), both open and close paths confirmed working. When the gate clears, the bot
+    Telegrams you automatically. Then set `TRADING_MODE=live` AND `ALLOW_LIVE_ORDERS=1` together.
 
 ---
 
@@ -242,9 +223,10 @@ cloudflared tunnel run --url http://localhost:8080 openbook
 
 ### Option C — SSH tunnel (no installs, one-off access)
 ```bash
-ssh -L 8080:localhost:8080 root@<your-vps-ip> -N
+ssh -L 8080:localhost:8080 trader@<your-vps-ip> -N
 ```
 Then open `http://localhost:8080`. Close the terminal to disconnect.
+(Use `root@` if you haven't disabled root SSH login yet.)
 
 ---
 

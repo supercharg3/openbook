@@ -28,15 +28,15 @@ PY_MINOR=$(echo "$PY_VER" | cut -d. -f2)
 ok "Python $PY_VER"
 
 # ── 2. Virtual env ───────────────────────────────────────────────────────────
-if [ ! -d "venv" ]; then
+if [ ! -d ".venv" ]; then
   echo "→ Creating virtual environment..."
-  $PYTHON -m venv venv
-  ok "venv created"
+  $PYTHON -m venv .venv
+  ok ".venv created"
 else
-  ok "venv exists"
+  ok ".venv exists"
 fi
 
-. venv/bin/activate
+. .venv/bin/activate
 pip install -q --upgrade pip
 pip install -q -r requirements.txt
 ok "Dependencies installed"

@@ -4,6 +4,21 @@
 # Run as a sudo-capable user. Idempotent where practical.
 set -euo pipefail
 
+echo "==> 0. Create trader user (if not already present)"
+if ! id "trader" &>/dev/null; then
+  sudo adduser --disabled-password --gecos "" trader
+  echo "    trader user created."
+else
+  echo "    trader user already exists."
+fi
+
+# Copy project files to trader's home if running as root
+if [ "$(whoami)" = "root" ] && [ "$(pwd)" != "/home/trader/ai-trading-system" ]; then
+  cp -r "$(pwd)" /home/trader/ai-trading-system
+  chown -R trader:trader /home/trader/ai-trading-system
+  echo "    Project copied to /home/trader/ai-trading-system"
+fi
+
 echo "==> 1. Timezone → Asia/Singapore (so the 8am report timer fires in SGT)"
 sudo timedatectl set-timezone Asia/Singapore
 
