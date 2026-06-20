@@ -177,12 +177,23 @@ def route_signal(ticker: str, verdict: str, direction: str, confidence: str, con
     if venue == "stock":
         import sqlite3
         from .run_swing import MAX_OPEN_BETS, THESIS_ORDER_TTL_HOURS
-        QUEUE_CAP = 3   # max pending thesis orders — beyond this the signal is dropped, not queued
+        QUEUE_CAP = 3
+        CONF_WEIGHT = {"HIGH": 1.0, "MEDIUM": 0.67, "LOW": 0.33}
+
+        def _score(conf: str, created_iso: str) -> float:
+            """Higher = better. Conviction × remaining time value (decays linearly to 0 at TTL)."""
+            try:
+                age_h = (datetime.now(timezone.utc) -
+                         datetime.fromisoformat(created_iso.replace("Z", "+00:00"))
+                         ).total_seconds() / 3600
+            except Exception:
+                age_h = THESIS_ORDER_TTL_HOURS
+            recency = max(0.0, 1.0 - age_h / THESIS_ORDER_TTL_HOURS)
+            return CONF_WEIGHT.get(conf.upper(), 0.67) * recency
 
         with sqlite3.connect(db.db_path) as conn:
-            # Count genuinely pending orders (not expired/failed/done)
             pending_rows = conn.execute(
-                "SELECT id, created_at, pair FROM thesis_orders WHERE status='pending' ORDER BY created_at"
+                "SELECT id, created_at, pair, confidence FROM thesis_orders WHERE status='pending' ORDER BY created_at"
             ).fetchall()
             open_bets = conn.execute(
                 "SELECT COUNT(*) FROM trades WHERE closed_at IS NULL AND strategy='swing'"
@@ -190,33 +201,28 @@ def route_signal(ticker: str, verdict: str, direction: str, confidence: str, con
 
         slots_free = MAX_OPEN_BETS - open_bets
         queue_len = len(pending_rows)
+        new_score = _score(confidence, now)
 
+        bumped_msg = ""
         if slots_free <= 0 and queue_len >= QUEUE_CAP:
-            # Queue full — bump the oldest pending order and take its slot for this fresher signal
-            oldest_id = pending_rows[0][0]
-            oldest_pair = pending_rows[0][2]
-            with sqlite3.connect(db.db_path) as conn:
-                conn.execute("UPDATE thesis_orders SET status='bumped' WHERE id=?", (oldest_id,))
-            print(f"[alpha] queue full — bumped #{oldest_id} ({oldest_pair}), replacing with {ticker}")
-            with sqlite3.connect(db.db_path) as conn:
-                conn.execute(
-                    "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status) VALUES (?,?,?,?,?)",
-                    (now, "buy" if direction == "LONG" else "sell", ticker, 5.0, "pending"),
-                )
-        elif slots_free <= 0 and queue_len < QUEUE_CAP:
-            # Slot full but queue has room — add to queue
-            with sqlite3.connect(db.db_path) as conn:
-                conn.execute(
-                    "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status) VALUES (?,?,?,?,?)",
-                    (now, "buy" if direction == "LONG" else "sell", ticker, 5.0, "pending"),
-                )
-        else:
-            # Slot free — insert and execute immediately
-            with sqlite3.connect(db.db_path) as conn:
-                conn.execute(
-                    "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status) VALUES (?,?,?,?,?)",
-                    (now, "buy" if direction == "LONG" else "sell", ticker, 5.0, "pending"),
-                )
+            # Find the lowest-scored queued order
+            scored = sorted(pending_rows, key=lambda r: _score(r[3], r[1]))
+            weakest = scored[0]
+            weakest_score = _score(weakest[3], weakest[1])
+            if new_score > weakest_score:
+                with sqlite3.connect(db.db_path) as conn:
+                    conn.execute("UPDATE thesis_orders SET status='bumped' WHERE id=?", (weakest[0],))
+                bumped_msg = f" (bumped {weakest[2]} {weakest[3]} score={weakest_score:.2f})"
+                print(f"[alpha] queue full — bumped #{weakest[0]} ({weakest[2]}, score {weakest_score:.2f}), new signal {ticker} score {new_score:.2f}")
+            else:
+                print(f"[alpha] queue full — new signal {ticker} score {new_score:.2f} weaker than all queued, dropped")
+                return f"dropped — queue full with higher-conviction signals (your score {new_score:.2f})"
+
+        with sqlite3.connect(db.db_path) as conn:
+            conn.execute(
+                "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status, confidence) VALUES (?,?,?,?,?,?)",
+                (now, "buy" if direction == "LONG" else "sell", ticker, 5.0, "pending", confidence.upper()),
+            )
 
         try:
             from .run_swing import run_thesis_now
@@ -225,10 +231,8 @@ def route_signal(ticker: str, verdict: str, direction: str, confidence: str, con
         except Exception as e:
             print(f"[alpha] immediate swing run failed: {e}")
 
-        if slots_free <= 0 and queue_len >= QUEUE_CAP:
-            return f"queued (bumped oldest) — {queue_len} pending, no free slots"
-        elif slots_free <= 0:
-            return f"queued ({queue_len + 1}/{QUEUE_CAP}) — no free slots right now, executes within 24h or drops"
+        if slots_free <= 0:
+            return f"queued ({min(queue_len+1, QUEUE_CAP)}/{QUEUE_CAP}, score {new_score:.2f}){bumped_msg} — executes within 24h or expires"
         return "entering now → swing sleeve"
 
     return "no-trade (unknown asset type)"

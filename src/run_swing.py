@@ -175,9 +175,22 @@ def main() -> None:
     raw_conn = sqlite3.connect(cfg.db_path)
     raw_conn.row_factory = sqlite3.Row
     pending = raw_conn.execute(
-        "SELECT * FROM thesis_orders WHERE status='pending' ORDER BY created_at"
+        "SELECT * FROM thesis_orders WHERE status='pending'"
     ).fetchall()
     raw_conn.close()
+
+    # Execute highest-conviction, freshest signals first
+    _cw = {"HIGH": 1.0, "MEDIUM": 0.67, "LOW": 0.33}
+    def _order_score(o):
+        try:
+            age_h = (datetime.now(timezone.utc) -
+                     datetime.fromisoformat(o["created_at"].replace("Z", "+00:00"))
+                     ).total_seconds() / 3600
+        except Exception:
+            age_h = THESIS_ORDER_TTL_HOURS
+        recency = max(0.0, 1.0 - age_h / THESIS_ORDER_TTL_HOURS)
+        return _cw.get((o["confidence"] or "MEDIUM").upper(), 0.67) * recency
+    pending = sorted(pending, key=_order_score, reverse=True)
 
     for order in pending:
         if len(bets) >= MAX_OPEN_BETS or risk_budget(value, floor) < 50:
@@ -306,10 +319,20 @@ def run_thesis_now(cfg, db) -> None:
         return r["size_usd"] * (p / r["entry_price"]) if r["entry_price"] else r["size_usd"]
 
     # price only the tickers we actually need
-    pending = sqlite3.connect(cfg.db_path)
-    pending.row_factory = sqlite3.Row
-    orders = pending.execute("SELECT * FROM thesis_orders WHERE status='pending' ORDER BY created_at").fetchall()
-    pending.close()
+    _raw = sqlite3.connect(cfg.db_path)
+    _raw.row_factory = sqlite3.Row
+    orders = _raw.execute("SELECT * FROM thesis_orders WHERE status='pending'").fetchall()
+    _raw.close()
+    _cw2 = {"HIGH": 1.0, "MEDIUM": 0.67, "LOW": 0.33}
+    def _oscore(o):
+        try:
+            age_h = (datetime.now(timezone.utc) -
+                     datetime.fromisoformat(o["created_at"].replace("Z", "+00:00"))
+                     ).total_seconds() / 3600
+        except Exception:
+            age_h = THESIS_ORDER_TTL_HOURS
+        return _cw2.get((o["confidence"] or "MEDIUM").upper(), 0.67) * max(0.0, 1.0 - age_h / THESIS_ORDER_TTL_HOURS)
+    orders = sorted(orders, key=_oscore, reverse=True)
 
     need = list({o["pair"] for o in orders} | set(bets.keys()))
     stock_syms = [s for s in need if classify_venue(s.split("/")[0]) == "stock"]
