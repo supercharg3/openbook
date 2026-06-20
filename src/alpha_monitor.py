@@ -156,17 +156,66 @@ def route_signal(ticker: str, verdict: str, direction: str, confidence: str, con
 
     if "WAIT" in verdict_up:
         target = _parse_wait_price(verdict)
-        if target:
-            from datetime import timedelta
-            expires = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
-            # For longs: buy when price dips to target (lte). For shorts: buy when price rises to target (gte).
-            condition = "lte" if direction == "LONG" else "gte"
-            # Stocks: keep bare ticker. Crypto: normalise to TICKER/USDT for Binance.
-            watch_ticker = ticker if (venue == "stock" or "/" in ticker) else f"{ticker}/USDT"
-            db.add_price_watch(watch_ticker, direction, target, condition, sleeve, context, now, expires)
-            return f"👀 watching for entry near ${target:,.4g} (expires 7d) — will auto-enter when price arrives"
-        else:
+        if not target:
             return "no-trade (WAIT but no price target found in verdict)"
+
+        # Validate: fetch current price and check target direction makes sense
+        current_px = None
+        try:
+            if venue == "crypto":
+                from .ccxt_feed import build_binance
+                ex = build_binance(None, None)
+                sym = ticker if "/" in ticker else f"{ticker}/USDT"
+                current_px = float(ex.fetch_ticker(sym)["last"])
+            else:
+                from .stocks import stock_quote
+                current_px = stock_quote(ticker)
+        except Exception:
+            pass
+
+        if current_px:
+            # LONG "dips to X": target must be below current price
+            # SHORT "rallies to X": target must be above current price
+            if direction == "LONG" and target >= current_px:
+                return (f"no-trade (WAIT target ${target:,.4g} is above current ${current_px:,.4g} "
+                        f"— can't wait for a dip that already passed)")
+            if direction == "SHORT" and target <= current_px:
+                return (f"no-trade (WAIT target ${target:,.4g} is below current ${current_px:,.4g} "
+                        f"— can't wait for a rally that already passed)")
+            # Also reject if target is unrealistically far (>50% away) — bad parse
+            ratio = target / current_px
+            if ratio > 2.0 or ratio < 0.1:
+                return (f"no-trade (WAIT target ${target:,.4g} vs current ${current_px:,.4g} "
+                        f"— looks like a bad parse, skipping)")
+        elif venue == "stock":
+            # Can't price it at all — non-tradeable ticker (BRENTOIL, SP500, 2327.TW etc)
+            return f"no-trade (can't fetch price for {ticker} — not a tradeable stock on Alpaca)"
+
+        from datetime import timedelta
+        expires = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
+        condition = "lte" if direction == "LONG" else "gte"
+        watch_ticker = ticker if (venue == "stock" or "/" in ticker) else f"{ticker}/USDT"
+
+        # Deduplicate: skip if an active watch already exists for this ticker+direction
+        import sqlite3
+        with sqlite3.connect(db.db_path) as conn:
+            existing = conn.execute(
+                "SELECT COUNT(*) FROM price_watches WHERE ticker=? AND direction=? AND expires_at > ?",
+                (watch_ticker, direction, now)
+            ).fetchone()[0]
+            if existing:
+                return f"no-trade (already watching {watch_ticker} {direction} — deduped)"
+
+            # Cap: max 10 active watches — drop the oldest if full
+            active = conn.execute(
+                "SELECT id FROM price_watches WHERE expires_at > ? ORDER BY created_at",
+                (now,)
+            ).fetchall()
+            if len(active) >= 10:
+                conn.execute("DELETE FROM price_watches WHERE id=?", (active[0][0],))
+
+        db.add_price_watch(watch_ticker, direction, target, condition, sleeve, context, now, expires)
+        return f"👀 watching for entry near ${target:,.4g} (expires 48h) — will auto-enter when price arrives"
 
     # BUY NOW — enter immediately
     if venue == "crypto":
