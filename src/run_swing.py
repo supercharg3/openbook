@@ -53,14 +53,25 @@ def _stock_prices(tickers: list[str]) -> dict:
         return out
     try:
         import yfinance as yf
-        data = yf.download(tickers, period="3mo", interval="1d", progress=False,
-                           group_by="ticker", auto_adjust=True, threads=True)
+        # Intraday (5m) for live price; 3mo daily for momentum calc — two separate calls
+        intra = yf.download(tickers, period="1d", interval="5m", progress=False,
+                            group_by="ticker", auto_adjust=True, threads=True)
+        daily = yf.download(tickers, period="3mo", interval="1d", progress=False,
+                            group_by="ticker", auto_adjust=True, threads=True)
         for t in tickers:
             try:
-                closes = data[t]["Close"].dropna().tolist()
-                if closes:
-                    out[t] = {"px": float(closes[-1]), "venue": "stock",
-                              "mom": float(closes[-1] / closes[0] - 1) if closes[0] else 0.0}
+                # Live price from intraday; fall back to daily close if intraday empty (OTC/after-hours)
+                try:
+                    px = float(intra[t]["Close"].dropna().values[-1])
+                except Exception:
+                    px = None
+                closes = daily[t]["Close"].dropna().tolist()
+                if not closes:
+                    continue
+                if px is None:
+                    px = float(closes[-1])
+                out[t] = {"px": px, "venue": "stock",
+                          "mom": float(closes[-1] / closes[0] - 1) if closes[0] else 0.0}
             except Exception:
                 continue
     except Exception:

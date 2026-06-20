@@ -48,7 +48,8 @@ def _swing_status_lines(db, swing_rows, cfg, is_live: bool = False) -> list[str]
     if tickers:
         try:
             import yfinance as yf
-            data = yf.download(tickers, period="5d", interval="1d", progress=False,
+            # 5-min intraday gives live marks during market hours; falls back to last close after hours
+            data = yf.download(tickers, period="1d", interval="5m", progress=False,
                                group_by="ticker", auto_adjust=True, threads=True)
             for t in tickers:
                 try:
@@ -57,6 +58,20 @@ def _swing_status_lines(db, swing_rows, cfg, is_live: bool = False) -> list[str]
                     pass
         except Exception:
             pass
+        # For any ticker that got no intraday data (OTC, after-hours), fall back to daily close
+        missing = [t for t in tickers if t not in prices]
+        if missing:
+            try:
+                import yfinance as yf
+                fb = yf.download(missing, period="5d", interval="1d", progress=False,
+                                 group_by="ticker", auto_adjust=True, threads=True)
+                for t in missing:
+                    try:
+                        prices[t] = float(fb[t]["Close"].dropna().values[-1])
+                    except Exception:
+                        pass
+            except Exception:
+                pass
     cash = float(db.get_state("swing_cash") or cfg.swing_budget_usd)
     total = cash
     pos = []
