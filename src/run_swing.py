@@ -325,10 +325,6 @@ def run_thesis_now(cfg, db) -> None:
     bets = {r["pair"]: r for r in db.open_positions() if str(r["strategy"]) == "swing"}
     cash = float(db.get_state("swing_cash") or START)
 
-    def bet_value(r):
-        p = px.get(r["pair"], {}).get("px") or r["entry_price"]
-        return r["size_usd"] * (p / r["entry_price"]) if r["entry_price"] else r["size_usd"]
-
     # price only the tickers we actually need
     _raw = sqlite3.connect(cfg.db_path)
     _raw.row_factory = sqlite3.Row
@@ -349,6 +345,10 @@ def run_thesis_now(cfg, db) -> None:
     stock_syms = [s for s in need if classify_venue(s.split("/")[0]) == "stock"]
     crypto_syms = [s for s in need if classify_venue(s.split("/")[0]) == "crypto"]
     px = {**_stock_prices(stock_syms), **_crypto_prices(crypto_syms, ex)}
+
+    def bet_value(r):
+        p = px.get(r["pair"], {}).get("px") or r["entry_price"]
+        return r["size_usd"] * (p / r["entry_price"]) if r["entry_price"] else r["size_usd"]
 
     value = cash + sum(bet_value(r) for r in bets.values())
     hwm = max(float(db.get_state("swing_hwm") or START), value)

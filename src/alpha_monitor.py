@@ -380,8 +380,8 @@ def check_swing_watches(cfg, db) -> None:
         now = datetime.now(timezone.utc).isoformat()
         with sqlite3.connect(db.db_path) as conn:
             conn.execute(
-                "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status) VALUES (?,?,?,?,?)",
-                (now, "buy" if direction == "LONG" else "sell", base, 5.0, "pending"),
+                "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status, confidence) VALUES (?,?,?,?,?,?)",
+                (now, "buy" if direction == "LONG" else "sell", base, 5.0, "pending", "MEDIUM"),
             )
         try:
             from .run_swing import run_thesis_now

@@ -56,7 +56,7 @@ def handle_command(
     text: str,
     controller: SystemController,
     status_provider: Callable[[], str],
-    report_provider: Callable[[], str],
+    report_provider: Callable[[str | None], str],
     assistant_provider: Callable[[str], str] | None = None,
     basket_approve: Callable[[], str] | None = None,
     run_swing: Callable[[], str] | None = None,
