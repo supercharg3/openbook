@@ -277,6 +277,14 @@ def main() -> None:
         except Exception as e:
             return f"⚠️ Swing run failed: {e}"
 
+    def clear_queue_now() -> str:
+        import sqlite3
+        with sqlite3.connect(cfg.db_path) as conn:
+            n = conn.execute(
+                "UPDATE thesis_orders SET status='cleared' WHERE status='pending'"
+            ).rowcount
+        return f"🗑 Cleared {n} pending thesis order(s). Queue is empty — next signals start fresh."
+
     tg = TelegramInterface(
         bot_token=cfg.telegram_bot_token,
         chat_id=cfg.telegram_chat_id,
@@ -287,6 +295,7 @@ def main() -> None:
         assistant_provider=assistant_provider,
         basket_approve=basket_approve,
         run_swing=run_swing_now,
+        clear_queue=clear_queue_now,
     )
 
     # Note: the startup MODE banner is sent by the trading-loop service (run_trade), not here,

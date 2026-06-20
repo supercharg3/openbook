@@ -60,6 +60,7 @@ def handle_command(
     assistant_provider: Callable[[str], str] | None = None,
     basket_approve: Callable[[], str] | None = None,
     run_swing: Callable[[], str] | None = None,
+    clear_queue: Callable[[], str] | None = None,
 ) -> str:
     """Map an incoming message to a controller action and return the reply text.
 
@@ -86,6 +87,8 @@ def handle_command(
         return basket_approve() if basket_approve else "Basket approval not available."
     if parsed.command == Command.RUN_SWING:
         return run_swing() if run_swing else "Swing runner not available."
+    if parsed.command == Command.CLEAR_QUEUE:
+        return clear_queue() if clear_queue else "Clear queue not available."
     if assistant_provider is not None:
         return assistant_provider(text)        # free-form question → Claude, grounded in real data
     return (
@@ -108,6 +111,7 @@ class TelegramInterface:
         assistant_provider: Callable[[str], str] | None = None,
         basket_approve: Callable[[], str] | None = None,
         run_swing: Callable[[], str] | None = None,
+        clear_queue: Callable[[], str] | None = None,
     ) -> None:
         self.bot_token = bot_token
         self.chat_id = str(chat_id) if chat_id else None   # None = discovery mode
@@ -118,6 +122,7 @@ class TelegramInterface:
         self.assistant_provider = assistant_provider
         self.basket_approve = basket_approve
         self.run_swing = run_swing
+        self.clear_queue = clear_queue
         self._app = None
 
     def _build_app(self):
@@ -172,6 +177,7 @@ class TelegramInterface:
                 self.assistant_provider,
                 self.basket_approve,
                 self.run_swing,
+                self.clear_queue,
             )
             notes = [
                 n for n in (

@@ -19,6 +19,7 @@ class Command(str, Enum):
     REPORT = "REPORT"
     APPROVE_BASKET = "APPROVE BASKET"
     RUN_SWING = "RUN SWING"
+    CLEAR_QUEUE = "CLEAR QUEUE"
     UNKNOWN = "UNKNOWN"
 
 
@@ -33,6 +34,7 @@ class ParsedCommand:
 _COMMAND_PATTERNS = [
     ("APPROVE BASKET", Command.APPROVE_BASKET),
     ("RUN SWING", Command.RUN_SWING),
+    ("CLEAR QUEUE", Command.CLEAR_QUEUE),
     ("CLOSE ALL", Command.CLOSE_ALL),
     ("REDUCE RISK", Command.REDUCE_RISK),
     ("STOP", Command.STOP),

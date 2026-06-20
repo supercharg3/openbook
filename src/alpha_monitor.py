@@ -176,18 +176,59 @@ def route_signal(ticker: str, verdict: str, direction: str, confidence: str, con
 
     if venue == "stock":
         import sqlite3
+        from .run_swing import MAX_OPEN_BETS, THESIS_ORDER_TTL_HOURS
+        QUEUE_CAP = 3   # max pending thesis orders — beyond this the signal is dropped, not queued
+
         with sqlite3.connect(db.db_path) as conn:
-            conn.execute(
-                "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status) VALUES (?,?,?,?,?)",
-                (now, "buy" if direction == "LONG" else "sell", ticker, 5.0, "pending"),
-            )
-        # Fire immediately — don't wait for the daily swing cycle
+            # Count genuinely pending orders (not expired/failed/done)
+            pending_rows = conn.execute(
+                "SELECT id, created_at, pair FROM thesis_orders WHERE status='pending' ORDER BY created_at"
+            ).fetchall()
+            open_bets = conn.execute(
+                "SELECT COUNT(*) FROM trades WHERE closed_at IS NULL AND strategy='swing'"
+            ).fetchone()[0]
+
+        slots_free = MAX_OPEN_BETS - open_bets
+        queue_len = len(pending_rows)
+
+        if slots_free <= 0 and queue_len >= QUEUE_CAP:
+            # Queue full — bump the oldest pending order and take its slot for this fresher signal
+            oldest_id = pending_rows[0][0]
+            oldest_pair = pending_rows[0][2]
+            with sqlite3.connect(db.db_path) as conn:
+                conn.execute("UPDATE thesis_orders SET status='bumped' WHERE id=?", (oldest_id,))
+            print(f"[alpha] queue full — bumped #{oldest_id} ({oldest_pair}), replacing with {ticker}")
+            with sqlite3.connect(db.db_path) as conn:
+                conn.execute(
+                    "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status) VALUES (?,?,?,?,?)",
+                    (now, "buy" if direction == "LONG" else "sell", ticker, 5.0, "pending"),
+                )
+        elif slots_free <= 0 and queue_len < QUEUE_CAP:
+            # Slot full but queue has room — add to queue
+            with sqlite3.connect(db.db_path) as conn:
+                conn.execute(
+                    "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status) VALUES (?,?,?,?,?)",
+                    (now, "buy" if direction == "LONG" else "sell", ticker, 5.0, "pending"),
+                )
+        else:
+            # Slot free — insert and execute immediately
+            with sqlite3.connect(db.db_path) as conn:
+                conn.execute(
+                    "INSERT INTO thesis_orders (created_at, action, pair, size_pct, status) VALUES (?,?,?,?,?)",
+                    (now, "buy" if direction == "LONG" else "sell", ticker, 5.0, "pending"),
+                )
+
         try:
             from .run_swing import run_thesis_now
             from .config import get_config as _cfg
             run_thesis_now(_cfg(), db)
         except Exception as e:
             print(f"[alpha] immediate swing run failed: {e}")
+
+        if slots_free <= 0 and queue_len >= QUEUE_CAP:
+            return f"queued (bumped oldest) — {queue_len} pending, no free slots"
+        elif slots_free <= 0:
+            return f"queued ({queue_len + 1}/{QUEUE_CAP}) — no free slots right now, executes within 24h or drops"
         return "entering now → swing sleeve"
 
     return "no-trade (unknown asset type)"

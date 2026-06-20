@@ -27,7 +27,7 @@ TIME_STOP_DAYS = 5          # cut if older than this AND return < TIME_STOP_LOSS
 TIME_STOP_LOSS = -0.05      # -5% after 5 days = not working, free the slot
 DEAD_MONEY_DAYS = 10        # cut if older than this AND return < DEAD_MONEY_GAIN
 DEAD_MONEY_GAIN = 0.10      # <+10% after 10 days = opportunity cost too high
-THESIS_ORDER_TTL_HOURS = 48 # queued orders older than this are stale — skip them
+THESIS_ORDER_TTL_HOURS = 24 # queued orders older than this are stale — skip them
 
 # Futures tickers Alpaca can't trade — skip at order time, don't guess a stock match
 FUTURES_BLOCKLIST = {
