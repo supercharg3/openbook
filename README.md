@@ -60,64 +60,68 @@ Plus an **alpha channel monitor** (watches public Telegram channels, runs bear/b
 
 ## Setup
 
-**Point your AI agent at this repo and say *"set up Openbook for me."*** It interviews you,
-recommends sleeves for your risk profile, and walks you through keys step by step. Then pick
-where to run it:
+**Step 1: clone the repo.** Step 2: open it in your AI coding tool and say *"set up Openbook."*
+The AI reads `AGENTS.md` and runs the full setup with you — interview, config, keys, launch,
+and a hands-on walkthrough of the commands. You never configure anything by hand.
+
+### Which AI tool to use
+
+| Tool | How to open this repo |
+|---|---|
+| **Claude Code** (recommended) | `cd openbook && claude` → say *"set up Openbook"* |
+| **Cursor** | Open → File → Open Folder → select `openbook/` → say *"set up Openbook"* |
+| **Codex CLI** | `cd openbook && codex` → say *"set up Openbook"* |
+| **Gemini CLI** | `cd openbook && gemini` → say *"set up Openbook"* |
+| **Any other agent** | Point it at the folder. It will find `AGENTS.md` automatically. |
+
+```bash
+git clone https://github.com/supercharg3/openbook.git
+cd openbook
+# then open your AI tool as above
+```
+
+The AI handles everything: runs `bash setup.sh`, edits `.env` for you, guides you through each
+API key one at a time (it never sees your keys — you paste them yourself), verifies the install,
+starts the bot, and teaches you the commands.
+
+**Where to run it:**
 
 | | Local Mac / laptop | 24/7 cloud server |
 |---|---|---|
-| **Best for** | Testing, trying it out | Always-on, full reporting |
+| **Best for** | Testing, trying it out | Always-on, 8am daily reports |
 | **Cost** | Free | ~$6/mo (DigitalOcean) |
-| **Time** | ~20 min | ~90 min |
-| **Guide** | [Local Setup](#local-setup-mac--laptop) below | [DEPLOYMENT.md](DEPLOYMENT.md) |
+| **AI setup time** | ~20 min | ~90 min |
+| **Guide** | The AI walks you through it | [DEPLOYMENT.md](DEPLOYMENT.md) |
 
-No AI agent? Follow the local or cloud guide manually — everything is documented.
+> **No AI tool?** You can follow [DEPLOYMENT.md](DEPLOYMENT.md) manually — every command is
+> documented there. But using an AI agent is significantly faster.
 
 ---
 
-## Local setup (Mac / laptop)
+## What the AI does during setup
 
-Good for testing. The bot won't run 24/7 — only while your Mac is on and the terminal is open.
+1. **Interviews you** — 3 questions: risk tolerance, goals, stocks/crypto preference
+2. **Recommends sleeves** — explains which ones fit you and why, confirms before touching anything
+3. **Runs `bash setup.sh`** — installs deps, creates `.env`
+4. **Guides you through each API key** — one at a time, tells you exactly where to get it, you
+   paste it yourself (the AI never sees your keys)
+5. **Verifies** — runs the test suite, confirms everything passes
+6. **Launches** — starts the bot, confirms you get a Telegram message back
+7. **Teaches** — walks you through every command hands-on: `STATUS`, `look into NVDA`, `STOP`
+8. **Sets your go-live gate** — you define what "proven" means before real money is possible
 
-```bash
-git clone <repo> openbook && cd openbook
-bash setup.sh                 # creates .venv, installs deps, copies .env.example → .env
-```
-
-Then fill in `.env` (minimum to start: `ANTHROPIC_API_KEY` + `TELEGRAM_BOT_TOKEN`), then:
-
-```bash
-bash setup.sh --verify        # runs the test suite to confirm everything wired up
-```
-
-Start all services with one command:
-```bash
-bash start.sh
-```
-This activates the venv and starts the Telegram bot, trading loop, and dashboard together.
-Ctrl+C stops everything cleanly.
-
-**What to expect:** within ~30 seconds the bot posts a startup banner to your Telegram group:
-`MODE: DRY-RUN — paper trading active`. Send it `STATUS` and you'll get a live snapshot back.
-The dashboard at `http://localhost:8080` shows equity curves and sleeve cards (empty at first —
-fills in as the loop runs and trades close).
-
-**Keys you need** (all free or cheap):
+**Keys you'll need** (the AI tells you where to get each one):
 
 | Key | Where | Cost | Required? |
 |---|---|---|---|
 | `ANTHROPIC_API_KEY` | console.anthropic.com | ~$0–2/mo | Yes |
 | `TELEGRAM_BOT_TOKEN` | @BotFather on Telegram | Free | Yes |
-| `ALPACA_API_KEY_ID` | alpaca.markets (paper account) | Free | For stock sleeves |
-| `BINANCE_API_KEY` | binance.com (trade-only key, **withdrawals OFF**) | Free | For crypto sleeve |
-| `EXA_API_KEY` | exa.ai | Free tier | For news + research |
+| `ALPACA_API_KEY_ID` | alpaca.markets → Paper Trading | Free | For stock sleeves |
+| `BINANCE_API_KEY` | binance.com (trade-only, **withdrawals OFF**) | Free | For crypto sleeves |
+| `EXA_API_KEY` | exa.ai | Free tier | For research + news scan |
 
-> **Binance key safety:** when creating your Binance API key, enable only *Reading* and
-> *Futures* permissions. **Leave withdrawals OFF.** Restrict the key to your IP address.
-> A leaked key then cannot drain your account. Never use a key with withdrawal permission.
-
-**The capital figures in `.env` (`STARTING_CAPITAL_USD`, `STOCK_SLEEVE_USD`, etc.) are practice
-amounts — simulated paper money. You do not need real funds to start.**
+**The capital figures in `.env` are practice amounts — simulated paper money. You do not need
+real funds to start.**
 
 ## How it stays honest
 
