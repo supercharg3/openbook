@@ -71,12 +71,23 @@ Show them the plan:
 
 Wait for confirmation before writing any files.
 
-**Alpha channel monitor** — ask if they picked aggressive or pro:
-> "Do you follow any public Telegram channels with trade signals? The alpha monitor can watch
-> them automatically — every signal goes through a research panel before anything trades, so it's
-> not blindly copying calls. What's the channel username?"
+**Alpha channel monitor** — ask everyone (it's useful for any profile):
+> "The alpha monitor watches public Telegram channels for trade signals and runs a research panel
+> on anything promising before it touches your money. It works best with 2+ channels — signals
+> only fire when TWO channels call the same ticker in the same direction, which cuts out most of
+> the noise. We have two good defaults: @paste_trade and @aihourly. Want me to enable both?"
 
-If yes, note the channel username. If no, skip.
+If yes: set `ALPHA_CHANNELS=paste_trade,aihourly` in `.env` — you do this, not the user.
+
+If they want different channels: ask for the usernames (the part after `t.me/`). Explain:
+> "Use at least 2 for cross-validation. With just 1, every signal goes straight to research
+> which is noisier and more expensive."
+
+If they say no: leave `ALPHA_CHANNELS=` blank.
+
+After setting channels, explain how it works in one sentence:
+> "With two channels, a ticker only gets researched when both call it — single-source signals
+> get a brief ping but no trade. You'll see the confirmation in Telegram."
 
 ---
 
@@ -141,11 +152,19 @@ Default budgets are in `.env.example`. Adjust based on what they said in the int
 
 Tell them: "These are practice (paper) amounts — no real money required to start."
 
-### 4c. Alpha channel (write this yourself if they said yes in the interview)
+### 4c. Alpha channel (write this yourself based on the interview)
 
+Edit `.env` and set:
+```
+ALPHA_CHANNELS=paste_trade,aihourly
+```
+Or whatever channels they chose. Leave blank if they said no.
+
+Then enable the alpha service. On Mac (local), it runs as part of `start.sh` — nothing extra.
+On VPS (systemd), enable it now:
 ```bash
-# Set ALPHA_CHANNELS= to the channel username they gave you
-# Example: ALPHA_CHANNELS=paste_trade
+# Only if deploying to a VPS — skip on local Mac
+sudo systemctl enable --now trading-alpha.service
 ```
 
 ### 4d. API keys — user pastes these themselves

@@ -4,15 +4,20 @@ Flow:
   1. Poll https://t.me/s/{channel} every 5 minutes (public HTML, no login required).
   2. Extract new messages (tracks last-seen message ID in the database).
   3. Each new message is parsed by Claude Haiku to extract: ticker, direction, confidence.
-  4. High/medium-confidence signals run through the full bear/bull research panel.
-  5. Auto-route:
+  4. Cross-validation gate (when 2+ channels configured):
+       - Signal from one channel → saved to alpha_signals, brief Telegram ping, NO research yet.
+       - Same ticker+direction from a SECOND channel (within 48h) → triggers research panel.
+       - Single-source signals never reach the research panel or execution.
+     Single channel configured → research immediately (no cross-val possible).
+  5. Confirmed signals run through the full bear/bull research panel.
+  6. Auto-route:
        - Crypto → degen sleeve (queued for next 15-min degen cycle)
        - Stock  → swing sleeve (queued as a thesis order)
        - AVOID  → notify only, no trade
-  6. Telegram notification with the full verdict + action taken.
+  7. Telegram notification with the full verdict + action taken.
 
 Requires only:
-  ALPHA_CHANNELS — comma-separated public channel usernames, e.g. "paste_trade"
+  ALPHA_CHANNELS — comma-separated public channel usernames, e.g. "paste_trade,aihourly"
   No Telegram account, no session file, no API keys beyond what's already configured.
 """
 from __future__ import annotations
@@ -401,10 +406,79 @@ def check_swing_watches(cfg, db) -> None:
         ))
 
 
+# ── Cross-validation helpers ─────────────────────────────────────────────────
+
+MATCH_WINDOW_HOURS = 48  # how far back to look for a confirming signal from another channel
+
+
+def _save_signal(db, channel: str, ticker: str, direction: str, confidence: str,
+                 context: str, msg_id: int) -> int:
+    """Store a raw parsed signal. Returns the new row id."""
+    import sqlite3
+    now = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(db.db_path) as conn:
+        cur = conn.execute(
+            "INSERT INTO alpha_signals (created_at, channel, ticker, direction, confidence, context, msg_id)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (now, channel, ticker, direction, confidence, context, msg_id),
+        )
+        return cur.lastrowid
+
+
+def _find_confirming_channel(db, ticker: str, direction: str, own_channel: str) -> str | None:
+    """Return the channel name if another channel already saw the same ticker+direction within
+    MATCH_WINDOW_HOURS, or None if not yet confirmed."""
+    import sqlite3
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=MATCH_WINDOW_HOURS)).isoformat()
+    with sqlite3.connect(db.db_path) as conn:
+        row = conn.execute(
+            "SELECT channel FROM alpha_signals"
+            " WHERE ticker=? AND direction=? AND channel!=? AND created_at>?"
+            " ORDER BY created_at DESC LIMIT 1",
+            (ticker, direction, own_channel, cutoff),
+        ).fetchone()
+    return row[0] if row else None
+
+
+def _mark_researched(db, ticker: str, direction: str) -> None:
+    """Mark all unresearched signals for this ticker+direction as researched."""
+    import sqlite3
+    with sqlite3.connect(db.db_path) as conn:
+        conn.execute(
+            "UPDATE alpha_signals SET matched=1, researched=1"
+            " WHERE ticker=? AND direction=? AND researched=0",
+            (ticker, direction),
+        )
+
+
+def _already_researched(db, ticker: str, direction: str) -> bool:
+    """True if we already researched this ticker+direction in the last MATCH_WINDOW_HOURS."""
+    import sqlite3
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=MATCH_WINDOW_HOURS)).isoformat()
+    with sqlite3.connect(db.db_path) as conn:
+        row = conn.execute(
+            "SELECT 1 FROM alpha_signals WHERE ticker=? AND direction=? AND researched=1 AND created_at>?",
+            (ticker, direction, cutoff),
+        ).fetchone()
+    return row is not None
+
+
 # ── Main poll loop ────────────────────────────────────────────────────────────
 
 def poll_once(channels: list[str], cfg, db) -> None:
-    """One poll pass across all configured channels. Called every POLL_INTERVAL seconds."""
+    """One poll pass across all configured channels. Called every POLL_INTERVAL seconds.
+
+    Cross-validation: when 2+ channels are configured, a signal only gets researched and
+    routed after it appears in at least 2 different channels (within MATCH_WINDOW_HOURS).
+    Single-source signals are saved and a brief waiting notification is sent — no Claude
+    research call, no trade. This cuts noise and token spend dramatically.
+
+    If only 1 channel is configured, all signals are researched immediately (no cross-val
+    possible).
+    """
+    cross_val = len(channels) >= 2
 
     for channel in channels:
         messages = fetch_messages(channel)
@@ -418,22 +492,65 @@ def poll_once(channels: list[str], cfg, db) -> None:
             print(f"[alpha] @{channel}/{msg['id']}: {msg['text'][:80]}")
             signals = parse_signals(msg["text"], cfg)
             print(f"[alpha]   → {len(signals)} signal(s) found")
+
             for signal in signals:
                 ticker = signal["ticker"]
-                verdict = research_alpha(ticker, signal["direction"], signal["context"], cfg)
-                action = route_signal(ticker, verdict, signal["direction"], signal["confidence"], signal["context"], db)
-                dir_emoji = "🟢" if signal["direction"] == "LONG" else "🔴"
+                direction = signal["direction"]
+                confidence = signal["confidence"]
+                context = signal["context"]
+
+                # Always save the raw signal first
+                _save_signal(db, channel, ticker, direction, confidence, context, msg["id"])
+
                 from .names import display as _display
                 name = _display(ticker)
                 ticker_label = f"{ticker} ({name})" if name != ticker else ticker
+                dir_emoji = "🟢" if direction == "LONG" else "🔴"
+
+                if cross_val:
+                    confirming = _find_confirming_channel(db, ticker, direction, channel)
+
+                    if confirming is None:
+                        # First sighting — wait for confirmation, no research
+                        print(f"[alpha]   {ticker} {direction} from @{channel} — waiting for second source")
+                        _notify(cfg, (
+                            f"📡 <b>Alpha Signal</b> · @{channel}\n\n"
+                            f"{dir_emoji} <b>{ticker_label}</b> · {direction} · {confidence.lower()} confidence\n"
+                            f"<i>{context}</i>\n\n"
+                            f"<b>Waiting for confirmation</b> from a second channel before researching. "
+                            f"Will fire automatically if @{[c for c in channels if c != channel][0]} also calls this."
+                        ))
+                        continue
+
+                    # Already confirmed — check we haven't researched this combo yet
+                    if _already_researched(db, ticker, direction):
+                        print(f"[alpha]   {ticker} {direction} already researched recently — skipping")
+                        continue
+
+                    print(f"[alpha]   {ticker} {direction} confirmed by @{confirming} + @{channel} — researching")
+
+                # Research + route (single channel, or just confirmed cross-val)
+                if cross_val:
+                    _mark_researched(db, ticker, direction)
+
+                verdict = research_alpha(ticker, direction, context, cfg)
+                action = route_signal(ticker, verdict, direction, confidence, context, db)
+
+                if cross_val:
+                    source_line = f"<b>Sources:</b> @{confirming} + @{channel} ✅ cross-validated\n\n"
+                else:
+                    source_line = f"<b>Source:</b> @{channel}\n\n"
+
                 header = (
-                    f"📡 <b>Alpha Signal</b> · @{channel}\n\n"
-                    f"{dir_emoji} <b>{ticker_label}</b> · {signal['direction']} · {signal['confidence'].lower()} confidence\n"
-                    f"<i>{signal['context']}</i>\n\n"
+                    f"📡 <b>Alpha Signal</b>\n\n"
+                    f"{dir_emoji} <b>{ticker_label}</b> · {direction} · {confidence.lower()} confidence\n"
+                    f"<i>{context}</i>\n\n"
+                    f"{source_line}"
                     f"<b>Action:</b> {action}\n\n"
                     f"{'─' * 20}\n"
                 )
                 _notify(cfg, header + verdict)
+
             # Mark seen regardless — don't re-process on next poll
             db.set_state(f"alpha_last_id_{channel}", str(msg["id"]),
                          datetime.now(timezone.utc).isoformat())

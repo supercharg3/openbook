@@ -107,6 +107,20 @@ CREATE TABLE IF NOT EXISTS price_watches (
     triggered_at    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_watches_status ON price_watches(status);
+
+CREATE TABLE IF NOT EXISTS alpha_signals (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at      TEXT    NOT NULL,
+    channel         TEXT    NOT NULL,            -- which channel sourced this signal
+    ticker          TEXT    NOT NULL,
+    direction       TEXT    NOT NULL,            -- LONG | SHORT
+    confidence      TEXT    NOT NULL DEFAULT 'MEDIUM',
+    context         TEXT,
+    msg_id          INTEGER NOT NULL,            -- original Telegram message id
+    matched         INTEGER NOT NULL DEFAULT 0, -- 1 = confirmed by a second channel
+    researched      INTEGER NOT NULL DEFAULT 0  -- 1 = research_alpha already ran
+);
+CREATE INDEX IF NOT EXISTS idx_alpha_signals_ticker ON alpha_signals(ticker, direction, created_at);
 """
 
 
