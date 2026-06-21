@@ -511,15 +511,8 @@ def poll_once(channels: list[str], cfg, db) -> None:
                     confirming = _find_confirming_channel(db, ticker, direction, channel)
 
                     if confirming is None:
-                        # First sighting — wait for confirmation, no research
-                        print(f"[alpha]   {ticker} {direction} from @{channel} — waiting for second source")
-                        _notify(cfg, (
-                            f"📡 <b>Alpha Signal</b> · @{channel}\n\n"
-                            f"{dir_emoji} <b>{ticker_label}</b> · {direction} · {confidence.lower()} confidence\n"
-                            f"<i>{context}</i>\n\n"
-                            f"<b>Waiting for confirmation</b> from a second channel before researching. "
-                            f"Will fire automatically if @{[c for c in channels if c != channel][0]} also calls this."
-                        ))
+                        # First sighting — save silently, no notification, no research
+                        print(f"[alpha]   {ticker} {direction} from @{channel} — saved, waiting for second source")
                         continue
 
                     # Already confirmed — check we haven't researched this combo yet
